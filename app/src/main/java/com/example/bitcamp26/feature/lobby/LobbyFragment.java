@@ -19,8 +19,11 @@ import com.example.bitcamp26.R;
 import com.example.bitcamp26.core.model.Lobby;
 import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.util.CodeUtils;
+import com.example.bitcamp26.core.model.PlayerRole;
 import com.example.bitcamp26.data.auth.AuthRepository;
 import com.example.bitcamp26.data.lobby.LobbyRepository;
+import com.example.bitcamp26.navigation.AppNavigator;
+import com.example.bitcamp26.ui.MainActivity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -102,6 +105,7 @@ public class LobbyFragment extends Fragment {
                 statusTextView.setText(message);
                 lobbyCodeInput.setText(lobbyCode);
                 Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show();
+                navigateToReadyCheck(createdLobby, userId);
             }
 
             @Override
@@ -158,6 +162,7 @@ public class LobbyFragment extends Fragment {
                         String message = "You are already in this lobby.";
                         statusTextView.setText(message);
                         Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
+                        navigateToReadyCheck(lobby, userId);
                         return;
                     }
                 }
@@ -165,6 +170,7 @@ public class LobbyFragment extends Fragment {
                 Player player = new Player();
                 player.setId(userId);
                 player.setDisplayName(displayName);
+                player.setRole(PlayerRole.HIDER);
                 player.setCaught(false);
                 player.setCatchCode(CodeUtils.generateCode());
 
@@ -182,6 +188,7 @@ public class LobbyFragment extends Fragment {
                         String message = "Joined lobby: " + CodeUtils.formatCodeForDisplay(lobbyCode);
                         statusTextView.setText(message);
                         Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show();
+                        navigateToReadyCheck(updatedLobby, userId);
                     }
 
                     @Override
@@ -221,6 +228,7 @@ public class LobbyFragment extends Fragment {
         Player hostPlayer = new Player();
         hostPlayer.setId(userId);
         hostPlayer.setDisplayName(displayName);
+        hostPlayer.setRole(PlayerRole.SEEKER);
         hostPlayer.setCaught(false);
         hostPlayer.setCatchCode(CodeUtils.generateCode());
 
@@ -230,6 +238,20 @@ public class LobbyFragment extends Fragment {
         lobby.setPlayers(players);
         lobby.setPlayerCount(players.size());
         return lobby;
+    }
+
+    private void navigateToReadyCheck(@NonNull Lobby lobby, @NonNull String currentPlayerId) {
+        if (!isAdded()) {
+            return;
+        }
+        if (!(requireActivity() instanceof MainActivity)) {
+            return;
+        }
+        AppNavigator navigator = ((MainActivity) requireActivity()).getAppNavigator();
+        if (navigator == null) {
+            return;
+        }
+        navigator.showReadyCheck(lobby, currentPlayerId, true);
     }
 
     private void setLoading(boolean isLoading) {
