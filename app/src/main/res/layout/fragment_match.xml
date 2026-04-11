@@ -10,69 +10,164 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <TextView
-            android:id="@+id/textLobbyTitle"
+        <!-- Shrink / match-state banner -->
+        <com.example.bitcamp26.feature.match.components.ShrinkBannerView
+            android:id="@+id/shrinkBannerView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Lobby"
-            android:textSize="26sp"
-            android:textStyle="bold"
-            android:paddingBottom="12dp" />
+            android:layout_marginBottom="12dp" />
 
         <TextView
-            android:id="@+id/textLobbySubtitle"
+            android:id="@+id/textMatchScore"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Create a new lobby or join an existing one."
-            android:textSize="15sp"
-            android:paddingBottom="16dp" />
+            android:layout_marginBottom="6dp"
+            android:text="Score: 0"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/textMatchFinished"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="Game Finished: No"
+            android:textSize="15sp" />
+
+        <!-- Map placeholder with hotspot overlay -->
+        <com.example.bitcamp26.feature.match.components.MapViewContainer
+            android:id="@+id/mapViewContainer"
+            android:layout_width="match_parent"
+            android:layout_height="260dp"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:id="@+id/textCurrentPlayerSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="Current Player: None selected"
+            android:textSize="15sp" />
+
+        <!-- Current player ID input -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp"
+            android:text="Current Player ID"
+            android:textSize="14sp" />
 
         <EditText
-            android:id="@+id/editDisplayName"
+            android:id="@+id/editCurrentPlayerId"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Enter display name"
-            android:inputType="textPersonName"
-            android:padding="12dp" />
+            android:layout_marginBottom="12dp"
+            android:hint="Enter current player ID"
+            android:inputType="text" />
+
+        <!-- Manual location section -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:text="Manual Location Submission"
+            android:textSize="17sp" />
 
         <EditText
-            android:id="@+id/editLobbyCode"
+            android:id="@+id/editLatitude"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:hint="Enter lobby code"
-            android:inputType="textCapCharacters"
-            android:maxLength="6"
-            android:padding="12dp" />
+            android:layout_marginBottom="8dp"
+            android:hint="Latitude (e.g. 38.9869)"
+            android:inputType="numberDecimal|numberSigned" />
+
+        <EditText
+            android:id="@+id/editLongitude"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:hint="Longitude (e.g. -76.9426)"
+            android:inputType="numberDecimal|numberSigned" />
 
         <Button
-            android:id="@+id/buttonCreateLobby"
+            android:id="@+id/buttonSubmitLocation"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Create Lobby" />
+            android:layout_marginBottom="8dp"
+            android:text="Submit Location" />
 
         <Button
-            android:id="@+id/buttonJoinLobby"
+            android:id="@+id/buttonClaimHotspot"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="Join Lobby" />
+            android:layout_marginBottom="16dp"
+            android:text="Claim Nearby Hotspot" />
+
+        <!-- Catch code section -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:text="Catch Code Submission"
+            android:textSize="17sp" />
+
+        <EditText
+            android:id="@+id/editCatchTargetPlayerId"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:hint="Target player ID"
+            android:inputType="text" />
+
+        <EditText
+            android:id="@+id/editCatchCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:hint="Target catch code"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/buttonSubmitCatchCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:text="Submit Catch Code" />
+
+        <!-- Powerups section -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:text="Powerups"
+            android:textSize="17sp" />
+
+        <Button
+            android:id="@+id/buttonUseHiderPowerup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="Use Hider Invisibility" />
+
+        <Button
+            android:id="@+id/buttonUseSeekerPowerup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:text="Use Seeker Reveal All" />
 
         <ProgressBar
-            android:id="@+id/progressLobby"
+            android:id="@+id/progressMatch"
             style="?android:attr/progressBarStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="16dp"
+            android:layout_marginBottom="12dp"
             android:visibility="gone" />
 
         <TextView
-            android:id="@+id/textLobbyStatus"
+            android:id="@+id/textMatchStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
             android:text="Status: Ready"
             android:textSize="15sp" />
 

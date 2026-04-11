@@ -2,13 +2,10 @@
 package com.example.bitcamp26.feature.results;
 
 import android.os.Bundle;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -16,6 +13,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import com.example.bitcamp26.R;
 import com.example.bitcamp26.core.model.GameState;
 import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.model.PlayerRole;
@@ -27,8 +25,7 @@ import java.util.List;
 /**
  * Fragment that shows the end-of-match results.
  *
- * This implementation is intentionally programmatic and self-contained so it can
- * be used immediately without requiring an XML layout first.
+ * UI is defined in fragment_results.xml.
  *
  * What this screen shows:
  * - match result header (win/loss/completed)
@@ -37,10 +34,6 @@ import java.util.List;
  * - player summary list
  * - simple winner/role interpretation
  * - buttons for replay / return flow hooks
- *
- * This fragment currently uses local placeholder data when no GameState has been supplied.
- * Later, it can be connected to navigation arguments, Firebase-backed match history,
- * or a ResultsViewModel.
  */
 public class ResultsFragment extends Fragment {
 
@@ -69,12 +62,25 @@ public class ResultsFragment extends Fragment {
                              @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
         seedPlaceholderResultsIfNeeded();
-        return createContentView();
+        return inflater.inflate(R.layout.fragment_results, container, false);
     }
 
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        titleTextView = view.findViewById(R.id.textResultsTitle);
+        subtitleTextView = view.findViewById(R.id.textResultsSubtitle);
+        scoreTextView = view.findViewById(R.id.textResultsScore);
+        timingTextView = view.findViewById(R.id.textResultsDuration);
+        winnerTextView = view.findViewById(R.id.textResultsWinner);
+        playersHeaderTextView = view.findViewById(R.id.textResultsPlayersHeader);
+        playersSummaryTextView = view.findViewById(R.id.textResultsPlayersSummary);
+        playAgainButton = view.findViewById(R.id.buttonPlayAgain);
+        returnToLobbyButton = view.findViewById(R.id.buttonReturnToLobby);
+        statusTextView = view.findViewById(R.id.textResultsStatus);
+
+        bindListeners();
         refreshUi();
     }
 
@@ -102,63 +108,6 @@ public class ResultsFragment extends Fragment {
     @Nullable
     public String getCurrentPlayerId() {
         return currentPlayerId;
-    }
-
-    private View createContentView() {
-        int padding = dpToPx(16);
-
-        ScrollView scrollView = new ScrollView(requireContext());
-        scrollView.setLayoutParams(new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
-
-        LinearLayout root = new LinearLayout(requireContext());
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(padding, padding, padding, padding);
-        root.setLayoutParams(new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-        scrollView.addView(root);
-
-        titleTextView = new TextView(requireContext());
-        titleTextView.setTextSize(26f);
-        titleTextView.setGravity(Gravity.START);
-        titleTextView.setText("Match Results");
-        root.addView(titleTextView, matchWrapParams(0, 8));
-
-        subtitleTextView = buildBodyTextView("Review the final outcome of the match.");
-        root.addView(subtitleTextView, matchWrapParams(0, 12));
-
-        scoreTextView = buildBodyTextView("Final Score: 0");
-        root.addView(scoreTextView, matchWrapParams(0, 8));
-
-        timingTextView = buildBodyTextView("Duration: --");
-        root.addView(timingTextView, matchWrapParams(0, 8));
-
-        winnerTextView = buildBodyTextView("Winner: TBD");
-        root.addView(winnerTextView, matchWrapParams(0, 16));
-
-        playersHeaderTextView = new TextView(requireContext());
-        playersHeaderTextView.setText("Players");
-        playersHeaderTextView.setTextSize(18f);
-        root.addView(playersHeaderTextView, matchWrapParams(0, 8));
-
-        playersSummaryTextView = buildBodyTextView("No player summary available.");
-        root.addView(playersSummaryTextView, matchWrapParams(0, 16));
-
-        playAgainButton = buildButton("Play Again");
-        root.addView(playAgainButton, matchWrapParams(0, 8));
-
-        returnToLobbyButton = buildButton("Return to Lobby");
-        root.addView(returnToLobbyButton, matchWrapParams(0, 12));
-
-        statusTextView = buildBodyTextView("Status: Results ready.");
-        root.addView(statusTextView, matchWrapParams(0, 0));
-
-        bindListeners();
-        return scrollView;
     }
 
     private void bindListeners() {
@@ -389,37 +338,6 @@ public class ResultsFragment extends Fragment {
 
         currentGameState = gameState;
         currentPlayerId = "player_me";
-    }
-
-    @NonNull
-    private TextView buildBodyTextView(@NonNull String text) {
-        TextView textView = new TextView(requireContext());
-        textView.setText(text);
-        textView.setTextSize(15f);
-        textView.setGravity(Gravity.START);
-        return textView;
-    }
-
-    @NonNull
-    private Button buildButton(@NonNull String text) {
-        Button button = new Button(requireContext());
-        button.setText(text);
-        return button;
-    }
-
-    @NonNull
-    private LinearLayout.LayoutParams matchWrapParams(int topDp, int bottomDp) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        params.topMargin = dpToPx(topDp);
-        params.bottomMargin = dpToPx(bottomDp);
-        return params;
-    }
-
-    private int dpToPx(int dp) {
-        return Math.round(dp * requireContext().getResources().getDisplayMetrics().density);
     }
 
     private void showStatus(@NonNull String message) {

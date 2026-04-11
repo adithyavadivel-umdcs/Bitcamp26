@@ -2,16 +2,12 @@
 package com.example.bitcamp26.feature.match;
 
 import android.os.Bundle;
-import android.text.InputType;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -20,6 +16,7 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
+import com.example.bitcamp26.R;
 import com.example.bitcamp26.core.model.GameState;
 import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.model.PlayerRole;
@@ -34,9 +31,8 @@ import java.util.List;
 /**
  * Fragment that represents the active match screen.
  *
- * This implementation is intentionally self-contained and programmatic so the
- * screen can run before a dedicated XML layout and full navigation graph are added.
- * It connects to MatchViewModel and exposes a simple but functional match UI:
+ * UI is defined in fragment_match.xml. This fragment connects to MatchViewModel
+ * and exposes a functional match UI:
  *
  * - top shrink/status banner
  * - score and game status text
@@ -47,12 +43,6 @@ import java.util.List;
  * - catch-code submission controls
  * - powerup usage controls
  * - realtime status/error output
- *
- * Notes:
- * - This screen does not yet connect to device GPS automatically. It provides
- *   manual latitude/longitude inputs for MVP testing.
- * - It assumes another part of the app will provide/set the initial GameState.
- * - It uses MatchViewModel as the source of truth for interaction results.
  */
 public class MatchFragment extends Fragment {
 
@@ -90,12 +80,42 @@ public class MatchFragment extends Fragment {
                              @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
         viewModel = new ViewModelProvider(this).get(MatchViewModel.class);
-        return createContentView();
+        return inflater.inflate(R.layout.fragment_match, container, false);
     }
 
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        shrinkBannerView = view.findViewById(R.id.shrinkBannerView);
+        scoreTextView = view.findViewById(R.id.textMatchScore);
+        gameFinishedTextView = view.findViewById(R.id.textMatchFinished);
+        mapViewContainer = view.findViewById(R.id.mapViewContainer);
+        playerSummaryTextView = view.findViewById(R.id.textCurrentPlayerSummary);
+        currentPlayerIdInput = view.findViewById(R.id.editCurrentPlayerId);
+        latitudeInput = view.findViewById(R.id.editLatitude);
+        longitudeInput = view.findViewById(R.id.editLongitude);
+        catchTargetPlayerIdInput = view.findViewById(R.id.editCatchTargetPlayerId);
+        catchCodeInput = view.findViewById(R.id.editCatchCode);
+        submitLocationButton = view.findViewById(R.id.buttonSubmitLocation);
+        claimHotspotButton = view.findViewById(R.id.buttonClaimHotspot);
+        submitCatchCodeButton = view.findViewById(R.id.buttonSubmitCatchCode);
+        useHiderPowerupButton = view.findViewById(R.id.buttonUseHiderPowerup);
+        useSeekerPowerupButton = view.findViewById(R.id.buttonUseSeekerPowerup);
+        progressBar = view.findViewById(R.id.progressMatch);
+        statusTextView = view.findViewById(R.id.textMatchStatus);
+
+        // Initialize banner and map placeholder to match the state set in createContentView.
+        shrinkBannerView.bind(
+                "Match Active",
+                "Track players, claim hotspots, and use powerups.",
+                "05:00",
+                0,
+                ShrinkBannerView.BannerState.NORMAL
+        );
+        mapViewContainer.setPlaceholderText("Map placeholder with player/hotspot overlay");
+
+        bindListeners();
         bindObservers();
 
         if (viewModel.getGameStateValue() == null) {
@@ -109,106 +129,6 @@ public class MatchFragment extends Fragment {
         }
 
         renderCurrentState();
-    }
-
-    private View createContentView() {
-        int padding = dpToPx(16);
-
-        ScrollView scrollView = new ScrollView(requireContext());
-        scrollView.setLayoutParams(new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
-
-        LinearLayout root = new LinearLayout(requireContext());
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(padding, padding, padding, padding);
-        root.setLayoutParams(new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-        scrollView.addView(root);
-
-        shrinkBannerView = new ShrinkBannerView(requireContext());
-        shrinkBannerView.bind(
-                "Match Active",
-                "Track players, claim hotspots, and use powerups.",
-                "05:00",
-                0,
-                ShrinkBannerView.BannerState.NORMAL
-        );
-        root.addView(shrinkBannerView, matchWrapParams(0, 12));
-
-        scoreTextView = buildSectionTextView("Score: 0");
-        root.addView(scoreTextView, matchWrapParams(0, 6));
-
-        gameFinishedTextView = buildSectionTextView("Game Finished: No");
-        root.addView(gameFinishedTextView, matchWrapParams(0, 12));
-
-        mapViewContainer = new MapViewContainer(requireContext());
-        mapViewContainer.setPlaceholderText("Map placeholder with player/hotspot overlay");
-        LinearLayout.LayoutParams mapParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(260)
-        );
-        mapParams.bottomMargin = dpToPx(12);
-        root.addView(mapViewContainer, mapParams);
-
-        playerSummaryTextView = buildSectionTextView("Current Player: None selected");
-        root.addView(playerSummaryTextView, matchWrapParams(0, 12));
-
-        TextView playerIdLabel = buildLabelTextView("Current Player ID");
-        root.addView(playerIdLabel, matchWrapParams(0, 4));
-
-        currentPlayerIdInput = buildEditText("Enter current player ID");
-        root.addView(currentPlayerIdInput, matchWrapParams(0, 12));
-
-        TextView locationSectionLabel = buildHeaderTextView("Manual Location Submission");
-        root.addView(locationSectionLabel, matchWrapParams(0, 6));
-
-        latitudeInput = buildNumberEditText("Latitude (e.g. 38.9869)");
-        root.addView(latitudeInput, matchWrapParams(0, 8));
-
-        longitudeInput = buildNumberEditText("Longitude (e.g. -76.9426)");
-        root.addView(longitudeInput, matchWrapParams(0, 8));
-
-        submitLocationButton = buildButton("Submit Location");
-        root.addView(submitLocationButton, matchWrapParams(0, 8));
-
-        claimHotspotButton = buildButton("Claim Nearby Hotspot");
-        root.addView(claimHotspotButton, matchWrapParams(0, 16));
-
-        TextView catchSectionLabel = buildHeaderTextView("Catch Code Submission");
-        root.addView(catchSectionLabel, matchWrapParams(0, 6));
-
-        catchTargetPlayerIdInput = buildEditText("Target player ID");
-        root.addView(catchTargetPlayerIdInput, matchWrapParams(0, 8));
-
-        catchCodeInput = buildEditText("Target catch code");
-        catchCodeInput.setInputType(InputType.TYPE_CLASS_TEXT);
-        root.addView(catchCodeInput, matchWrapParams(0, 8));
-
-        submitCatchCodeButton = buildButton("Submit Catch Code");
-        root.addView(submitCatchCodeButton, matchWrapParams(0, 16));
-
-        TextView powerupSectionLabel = buildHeaderTextView("Powerups");
-        root.addView(powerupSectionLabel, matchWrapParams(0, 6));
-
-        useHiderPowerupButton = buildButton("Use Hider Invisibility");
-        root.addView(useHiderPowerupButton, matchWrapParams(0, 8));
-
-        useSeekerPowerupButton = buildButton("Use Seeker Reveal All");
-        root.addView(useSeekerPowerupButton, matchWrapParams(0, 16));
-
-        progressBar = new ProgressBar(requireContext());
-        progressBar.setVisibility(View.GONE);
-        root.addView(progressBar, wrapWrapParams(0, 12));
-
-        statusTextView = buildSectionTextView("Status: Ready");
-        root.addView(statusTextView, matchWrapParams(0, 0));
-
-        bindListeners();
-        return scrollView;
     }
 
     private void bindListeners() {
@@ -468,82 +388,6 @@ public class MatchFragment extends Fragment {
     }
 
     @NonNull
-    private TextView buildHeaderTextView(@NonNull String text) {
-        TextView textView = new TextView(requireContext());
-        textView.setText(text);
-        textView.setTextSize(17f);
-        textView.setGravity(Gravity.START);
-        return textView;
-    }
-
-    @NonNull
-    private TextView buildLabelTextView(@NonNull String text) {
-        TextView textView = new TextView(requireContext());
-        textView.setText(text);
-        textView.setTextSize(14f);
-        textView.setGravity(Gravity.START);
-        return textView;
-    }
-
-    @NonNull
-    private TextView buildSectionTextView(@NonNull String text) {
-        TextView textView = new TextView(requireContext());
-        textView.setText(text);
-        textView.setTextSize(15f);
-        textView.setGravity(Gravity.START);
-        return textView;
-    }
-
-    @NonNull
-    private EditText buildEditText(@NonNull String hint) {
-        EditText editText = new EditText(requireContext());
-        editText.setHint(hint);
-        editText.setLayoutParams(new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-        return editText;
-    }
-
-    @NonNull
-    private EditText buildNumberEditText(@NonNull String hint) {
-        EditText editText = buildEditText(hint);
-        editText.setInputType(InputType.TYPE_CLASS_NUMBER
-                | InputType.TYPE_NUMBER_FLAG_DECIMAL
-                | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        return editText;
-    }
-
-    @NonNull
-    private Button buildButton(@NonNull String text) {
-        Button button = new Button(requireContext());
-        button.setText(text);
-        return button;
-    }
-
-    @NonNull
-    private LinearLayout.LayoutParams matchWrapParams(int topDp, int bottomDp) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        params.topMargin = dpToPx(topDp);
-        params.bottomMargin = dpToPx(bottomDp);
-        return params;
-    }
-
-    @NonNull
-    private LinearLayout.LayoutParams wrapWrapParams(int topDp, int bottomDp) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        params.topMargin = dpToPx(topDp);
-        params.bottomMargin = dpToPx(bottomDp);
-        return params;
-    }
-
-    @NonNull
     private String getTrimmedText(@Nullable EditText editText) {
         if (editText == null || editText.getText() == null) {
             return "";
@@ -562,10 +406,6 @@ public class MatchFragment extends Fragment {
         } catch (NumberFormatException e) {
             return null;
         }
-    }
-
-    private int dpToPx(int dp) {
-        return Math.round(dp * requireContext().getResources().getDisplayMetrics().density);
     }
 
     private void showToast(@NonNull String message) {
