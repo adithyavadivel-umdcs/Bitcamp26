@@ -41,10 +41,6 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".ui.LobbyActivity" />
-        <activity android:name=".ui.MatchActivity" />
-        <activity android:name=".ui.ResultsActivity" />
-
     </application>
 
 </manifest>
