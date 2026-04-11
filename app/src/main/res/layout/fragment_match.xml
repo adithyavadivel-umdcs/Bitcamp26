@@ -50,6 +50,7 @@
 
         <!-- Current player ID input -->
         <TextView
+            android:id="@+id/textCurrentPlayerIdLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
@@ -66,6 +67,7 @@
 
         <!-- Manual location section -->
         <TextView
+            android:id="@+id/textManualLocationLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="6dp"

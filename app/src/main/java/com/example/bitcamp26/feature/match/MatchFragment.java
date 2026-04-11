@@ -4,6 +4,7 @@ package com.example.bitcamp26.feature.match;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.CountDownTimer;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -54,6 +55,9 @@ import java.util.List;
 public class MatchFragment extends Fragment {
 
     private MatchViewModel viewModel;
+    private GameState initialGameState;
+    private String initialCurrentPlayerId;
+    private CountDownTimer matchTimer;
 
     // ---- Location + Map ----
     private final MapManager mapManager = new MapManager();
@@ -86,6 +90,14 @@ public class MatchFragment extends Fragment {
 
     public MatchFragment() {
         // Required empty public constructor
+    }
+
+    /**
+     * Injects initial state before fragment creation.
+     */
+    public void setInitialData(@Nullable GameState gameState, @Nullable String currentPlayerId) {
+        this.initialGameState = gameState;
+        this.initialCurrentPlayerId = currentPlayerId;
     }
 
     // -------------------------------------------------------------------------
@@ -143,22 +155,26 @@ public class MatchFragment extends Fragment {
         progressBar                 = view.findViewById(R.id.progressMatch);
         statusTextView              = view.findViewById(R.id.textMatchStatus);
 
+        // Hide testing/manual inputs as requested by user
+        currentPlayerIdInput.setVisibility(View.GONE);
+        view.findViewById(R.id.textCurrentPlayerIdLabel).setVisibility(View.GONE);
+        view.findViewById(R.id.textManualLocationLabel).setVisibility(View.GONE);
+        
+        latitudeInput.setVisibility(View.GONE);
+        longitudeInput.setVisibility(View.GONE);
+        submitLocationButton.setVisibility(View.GONE);
+        
         // Attach Google Map into the FrameLayout container
         setupMap();
-
-        // Banner default state
-        shrinkBannerView.bind(
-                "Match Active",
-                "Track players, claim hotspots, and use powerups.",
-                "05:00",
-                0,
-                ShrinkBannerView.BannerState.NORMAL
-        );
 
         bindListeners();
         bindObservers();
 
-        if (viewModel.getGameStateValue() == null) {
+        // Use injected initial data if available
+        if (initialGameState != null) {
+            viewModel.setInitialState(initialGameState, initialCurrentPlayerId);
+            startMatchTimer();
+        } else if (viewModel.getGameStateValue() == null) {
             GameState placeholderState = new GameState();
             placeholderState.setStarted(true);
             placeholderState.setFinished(false);
@@ -166,9 +182,41 @@ public class MatchFragment extends Fragment {
             placeholderState.setStartedAt(TimeUitls.nowMillis());
             placeholderState.setEndsAt(TimeUitls.minutesFromNow(5));
             viewModel.setInitialState(placeholderState, null);
+            startMatchTimer();
         }
 
         renderCurrentState();
+    }
+
+    private void startMatchTimer() {
+        if (matchTimer != null) {
+            matchTimer.cancel();
+        }
+
+        GameState state = viewModel.getGameStateValue();
+        if (state == null || state.isFinished()) return;
+
+        long now = TimeUitls.nowMillis();
+        long remaining = state.getEndsAt() - now;
+
+        if (remaining > 0) {
+            matchTimer = new CountDownTimer(remaining, 1000) {
+                @Override
+                public void onTick(long millisUntilFinished) {
+                    // Update the banner with remaining time
+                    renderGameState(viewModel.getGameStateValue());
+                }
+
+                @Override
+                public void onFinish() {
+                    GameState s = viewModel.getGameStateValue();
+                    if (s != null) {
+                        s.setFinished(true);
+                        viewModel.updateGameState(s);
+                    }
+                }
+            }.start();
+        }
     }
 
     @Override
@@ -182,6 +230,14 @@ public class MatchFragment extends Fragment {
         super.onPause();
         if (locationRepository != null) {
             locationRepository.stopLocationUpdates();
+        }
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (matchTimer != null) {
+            matchTimer.cancel();
         }
     }
 
@@ -223,22 +279,34 @@ public class MatchFragment extends Fragment {
     }
 
     private void startLocationUpdates() {
-        // Use Firebase UID if available; otherwise fall back to a stable placeholder.
+        // Use initial player ID if provided (from Ready Check), otherwise fall back to Firebase or local placeholder
+        String userId = initialCurrentPlayerId != null ? initialCurrentPlayerId : "local_player";
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
-        String userId = user != null ? user.getUid() : "local_player";
+        if (userId.equals("local_player") && user != null) {
+            userId = user.getUid();
+        }
 
         locationRepository.startLocationUpdates(userId, new LocationRepository.LocationUpdateCallback() {
             @Override
             public void onLocationUpdate(@NonNull PlayerLocation location) {
                 currentLocation = location;
 
-                // Auto-fill the lat/lng inputs so the player doesn't have to type them.
-                // They can still be edited manually for testing.
+                // Auto-fill hidden inputs so logic still works internally
                 latitudeInput.setText(String.valueOf(location.getLatitude()));
                 longitudeInput.setText(String.valueOf(location.getLongitude()));
 
-                // Move the self marker on the real Google Map
-                mapManager.updateSelfLocation(location);
+                // Show player name on map if we can find it
+                String displayName = null;
+                Player p = viewModel.getCurrentPlayerValue();
+                if (p != null) {
+                    displayName = p.getDisplayName();
+                }
+
+                // Move the self marker on the real Google Map with the label
+                mapManager.updateSelfLocation(location, displayName);
+                
+                // Also trigger an internal submission so other players see us (for the teammate's backend work)
+                viewModel.submitLocation(location.getUserId(), location.getLatitude(), location.getLongitude());
             }
 
             @Override

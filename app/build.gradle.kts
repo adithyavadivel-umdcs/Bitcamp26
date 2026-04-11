@@ -14,7 +14,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        manifestPlaceholders["MAPS_API_KEY"] = ""
+        manifestPlaceholders["MAPS_API_KEY"] = "AIzaSyCfr5jsBiUj29zk8KLCFc_RzKg7AbfE4OE"
     }
 
     buildTypes {

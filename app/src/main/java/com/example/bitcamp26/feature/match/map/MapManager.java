@@ -59,6 +59,16 @@ public class MapManager implements OnMapReadyCallback {
     /** Marker representing the local device's GPS position. */
     @Nullable
     private Marker selfMarker;
+    
+    // Buffer for when data is pushed BEFORE onMapReady
+    @Nullable
+    private PlayerLocation lastKnownSelfLocation;
+    @Nullable
+    private String lastKnownSelfLabel;
+    @Nullable
+    private List<PlayerMarkersRenderer.RenderablePlayerMarker> lastKnownPlayerMarkers;
+    @Nullable
+    private List<HotspotState> lastKnownHotspots;
 
     /** Markers for all other visible players, keyed by playerId. */
     private final Map<String, Marker> playerMarkers = new HashMap<>();
@@ -80,6 +90,17 @@ public class MapManager implements OnMapReadyCallback {
         googleMap.getUiSettings().setZoomControlsEnabled(true);
         googleMap.getUiSettings().setCompassEnabled(true);
         googleMap.getUiSettings().setMyLocationButtonEnabled(false);
+
+        // Apply buffered data now that we are ready
+        if (lastKnownSelfLocation != null) {
+            updateSelfLocation(lastKnownSelfLocation, lastKnownSelfLabel);
+        }
+        if (lastKnownPlayerMarkers != null) {
+            updatePlayerMarkers(lastKnownPlayerMarkers);
+        }
+        if (lastKnownHotspots != null) {
+            updateHotspots(lastKnownHotspots);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -95,25 +116,36 @@ public class MapManager implements OnMapReadyCallback {
      * Moves (or creates) the self-location marker to the GPS position.
      * On the first call, the camera flies to the user's location at {@link #DEFAULT_ZOOM}.
      */
-    public void updateSelfLocation(@NonNull PlayerLocation location) {
+    public void updateSelfLocation(@NonNull PlayerLocation location, @Nullable String label) {
+        lastKnownSelfLocation = location;
+        lastKnownSelfLabel = label;
         if (googleMap == null) return;
 
         LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+        String title = (label != null && !label.trim().isEmpty()) ? label : "You";
 
         if (selfMarker == null) {
             selfMarker = googleMap.addMarker(new MarkerOptions()
                     .position(latLng)
-                    .title("You")
+                    .title(title)
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
                     .zIndex(2f));
         } else {
             selfMarker.setPosition(latLng);
+            selfMarker.setTitle(title);
         }
 
         if (!hasCenteredOnUser) {
             googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM));
             hasCenteredOnUser = true;
         }
+    }
+
+    /**
+     * Overload for updateSelfLocation without a label.
+     */
+    public void updateSelfLocation(@NonNull PlayerLocation location) {
+        updateSelfLocation(location, null);
     }
 
     /**
@@ -127,6 +159,7 @@ public class MapManager implements OnMapReadyCallback {
      */
     public void updatePlayerMarkers(
             @NonNull List<PlayerMarkersRenderer.RenderablePlayerMarker> markers) {
+        lastKnownPlayerMarkers = markers;
         if (googleMap == null) return;
 
         Map<String, Boolean> activeIds = new HashMap<>();
@@ -169,6 +202,7 @@ public class MapManager implements OnMapReadyCallback {
      * Pass null or an empty list to clear all hotspot circles.
      */
     public void updateHotspots(@Nullable List<HotspotState> hotspots) {
+        lastKnownHotspots = hotspots;
         if (googleMap == null) return;
 
         Map<String, Boolean> activeIds = new HashMap<>();
