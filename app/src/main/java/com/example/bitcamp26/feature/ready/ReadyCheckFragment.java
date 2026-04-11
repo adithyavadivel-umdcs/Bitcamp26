@@ -2,14 +2,11 @@
 package com.example.bitcamp26.feature.ready;
 
 import android.os.Bundle;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -17,6 +14,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import com.example.bitcamp26.R;
 import com.example.bitcamp26.core.model.Lobby;
 import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.model.PlayerRole;
@@ -27,21 +25,6 @@ import java.util.List;
 
 /**
  * Fragment that represents a simple ready-check screen before a match starts.
- *
- * This implementation is deliberately self-contained and programmatic so it can
- * be used immediately without depending on XML layouts or a finished navigation graph.
- *
- * What this screen does:
- * - shows lobby summary information
- * - lists players and their ready state
- * - allows the current player to toggle ready / not ready
- * - allows a host to simulate starting the match once everyone is ready
- * - displays status and countdown-style timing text for MVP testing
- *
- * Important note:
- * This fragment currently manages ready-state locally for UI/MVP purposes.
- * Once your repository/model layer is finalized, you can replace the in-memory
- * updates with Firebase-backed updates through a ReadyCheckViewModel or repository.
  */
 public class ReadyCheckFragment extends Fragment {
 
@@ -73,12 +56,25 @@ public class ReadyCheckFragment extends Fragment {
                              @Nullable Bundle savedInstanceState) {
         readyCheckOpenedAt = TimeUitls.nowMillis();
         seedPlaceholderLobbyIfNeeded();
-        return createContentView();
+        return inflater.inflate(R.layout.fragment_ready_check, container, false);
     }
 
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        titleTextView = view.findViewById(R.id.textReadyTitle);
+        lobbySummaryTextView = view.findViewById(R.id.textReadyLobbySummary);
+        countdownTextView = view.findViewById(R.id.textReadyCountdown);
+        progressBar = view.findViewById(R.id.progressReadyCheck);
+        playersHeaderTextView = view.findViewById(R.id.textPlayersHeader);
+        playersListTextView = view.findViewById(R.id.textPlayersList);
+        toggleReadyButton = view.findViewById(R.id.buttonToggleReady);
+        markAllReadyButton = view.findViewById(R.id.buttonMarkAllReady);
+        startMatchButton = view.findViewById(R.id.buttonStartMatch);
+        statusTextView = view.findViewById(R.id.textReadyStatus);
+
+        bindListeners();
         refreshUi();
     }
 
@@ -107,65 +103,6 @@ public class ReadyCheckFragment extends Fragment {
     @Nullable
     public String getCurrentPlayerId() {
         return currentPlayerId;
-    }
-
-    private View createContentView() {
-        int padding = dpToPx(16);
-
-        ScrollView scrollView = new ScrollView(requireContext());
-        scrollView.setLayoutParams(new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
-
-        LinearLayout root = new LinearLayout(requireContext());
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(padding, padding, padding, padding);
-        root.setLayoutParams(new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-        scrollView.addView(root);
-
-        titleTextView = new TextView(requireContext());
-        titleTextView.setText("Ready Check");
-        titleTextView.setTextSize(24f);
-        titleTextView.setGravity(Gravity.START);
-        root.addView(titleTextView, matchWrapParams(0, 12));
-
-        lobbySummaryTextView = buildBodyTextView("Lobby summary unavailable.");
-        root.addView(lobbySummaryTextView, matchWrapParams(0, 8));
-
-        countdownTextView = buildBodyTextView("Opened just now");
-        root.addView(countdownTextView, matchWrapParams(0, 12));
-
-        progressBar = new ProgressBar(requireContext(), null, android.R.attr.progressBarStyleHorizontal);
-        progressBar.setMax(100);
-        progressBar.setProgress(0);
-        root.addView(progressBar, matchWrapParams(0, 16));
-
-        playersHeaderTextView = new TextView(requireContext());
-        playersHeaderTextView.setText("Players");
-        playersHeaderTextView.setTextSize(18f);
-        root.addView(playersHeaderTextView, matchWrapParams(0, 8));
-
-        playersListTextView = buildBodyTextView("No players found.");
-        root.addView(playersListTextView, matchWrapParams(0, 16));
-
-        toggleReadyButton = buildButton("Mark Ready");
-        root.addView(toggleReadyButton, matchWrapParams(0, 8));
-
-        markAllReadyButton = buildButton("Mark Everyone Ready (Demo)");
-        root.addView(markAllReadyButton, matchWrapParams(0, 8));
-
-        startMatchButton = buildButton("Start Match");
-        root.addView(startMatchButton, matchWrapParams(0, 12));
-
-        statusTextView = buildBodyTextView("Status: Waiting for players.");
-        root.addView(statusTextView, matchWrapParams(0, 0));
-
-        bindListeners();
-        return scrollView;
     }
 
     private void bindListeners() {
@@ -475,37 +412,6 @@ public class ReadyCheckFragment extends Fragment {
         currentLobby = lobby;
         currentPlayerId = "player_me";
         syncCurrentPlayerReadyFromLobby();
-    }
-
-    @NonNull
-    private TextView buildBodyTextView(@NonNull String text) {
-        TextView textView = new TextView(requireContext());
-        textView.setText(text);
-        textView.setTextSize(15f);
-        textView.setGravity(Gravity.START);
-        return textView;
-    }
-
-    @NonNull
-    private Button buildButton(@NonNull String text) {
-        Button button = new Button(requireContext());
-        button.setText(text);
-        return button;
-    }
-
-    @NonNull
-    private LinearLayout.LayoutParams matchWrapParams(int topDp, int bottomDp) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        params.topMargin = dpToPx(topDp);
-        params.bottomMargin = dpToPx(bottomDp);
-        return params;
-    }
-
-    private int dpToPx(int dp) {
-        return Math.round(dp * requireContext().getResources().getDisplayMetrics().density);
     }
 
     private void showStatus(@NonNull String message) {
