@@ -1,4 +1,8 @@
 package com.example.bitcamp26.core.model;
 
-public class PlayerRole {
+public enum PlayerRole {
+    SEEKER,
+    HIDER,
+    /** Not yet assigned (lobby phase) */
+    UNASSIGNED
 }
