@@ -1,18 +1,24 @@
 
 package com.example.bitcamp26.feature.match;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
@@ -22,41 +28,47 @@ import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.model.PlayerRole;
 import com.example.bitcamp26.core.model.PowerupType;
 import com.example.bitcamp26.core.util.TimeUitls;
-import com.example.bitcamp26.feature.match.components.MapViewContainer;
+import com.example.bitcamp26.data.location.LocationRepository;
+import com.example.bitcamp26.data.location.PlayerLocation;
 import com.example.bitcamp26.feature.match.components.PlayerMarkersRenderer;
 import com.example.bitcamp26.feature.match.components.ShrinkBannerView;
+import com.example.bitcamp26.feature.match.map.MapManager;
+import com.google.android.gms.maps.SupportMapFragment;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 
 import java.util.List;
 
 /**
- * Fragment that represents the active match screen.
+ * Fragment for the active match screen.
  *
- * UI is defined in fragment_match.xml. This fragment connects to MatchViewModel
- * and exposes a functional match UI:
+ * Location + map responsibilities (this file):
+ *  - Requests ACCESS_FINE_LOCATION at runtime
+ *  - Starts/stops GPS via LocationRepository in onResume/onPause
+ *  - Auto-populates lat/lng inputs from GPS so the player never has to type them
+ *  - Drives MapManager (SupportMapFragment, self marker, player markers, hotspot circles)
  *
- * - top shrink/status banner
- * - score and game status text
- * - placeholder map area with hotspot overlay support
- * - player details summary
- * - location submission controls
- * - claim hotspot action
- * - catch-code submission controls
- * - powerup usage controls
- * - realtime status/error output
+ * Game logic (MatchViewModel, untouched):
+ *  - Score, hotspot claiming, catch codes, powerups, timer
  */
 public class MatchFragment extends Fragment {
 
     private MatchViewModel viewModel;
 
+    // ---- Location + Map ----
+    private final MapManager mapManager = new MapManager();
+    private LocationRepository locationRepository;
+    @Nullable
+    private PlayerLocation currentLocation;
+    private ActivityResultLauncher<String[]> requestPermissionLauncher;
+
+    // ---- Views ----
     private ShrinkBannerView shrinkBannerView;
     private TextView scoreTextView;
     private TextView gameFinishedTextView;
     private TextView playerSummaryTextView;
     private TextView statusTextView;
     private ProgressBar progressBar;
-
-    private MapViewContainer mapViewContainer;
-    private final PlayerMarkersRenderer playerMarkersRenderer = new PlayerMarkersRenderer();
 
     private EditText currentPlayerIdInput;
     private EditText latitudeInput;
@@ -70,8 +82,33 @@ public class MatchFragment extends Fragment {
     private Button useHiderPowerupButton;
     private Button useSeekerPowerupButton;
 
+    private final PlayerMarkersRenderer playerMarkersRenderer = new PlayerMarkersRenderer();
+
     public MatchFragment() {
         // Required empty public constructor
+    }
+
+    // -------------------------------------------------------------------------
+    // Lifecycle
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        // Register the permission launcher before onStart
+        requestPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestMultiplePermissions(),
+                result -> {
+                    Boolean fine = result.getOrDefault(
+                            Manifest.permission.ACCESS_FINE_LOCATION, false);
+                    if (Boolean.TRUE.equals(fine)) {
+                        startLocationUpdates();
+                    } else {
+                        showToast("Location permission denied. GPS tracking disabled.");
+                    }
+                }
+        );
     }
 
     @Nullable
@@ -80,6 +117,7 @@ public class MatchFragment extends Fragment {
                              @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
         viewModel = new ViewModelProvider(this).get(MatchViewModel.class);
+        locationRepository = new LocationRepository(requireContext());
         return inflater.inflate(R.layout.fragment_match, container, false);
     }
 
@@ -87,25 +125,28 @@ public class MatchFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        shrinkBannerView = view.findViewById(R.id.shrinkBannerView);
-        scoreTextView = view.findViewById(R.id.textMatchScore);
-        gameFinishedTextView = view.findViewById(R.id.textMatchFinished);
-        mapViewContainer = view.findViewById(R.id.mapViewContainer);
-        playerSummaryTextView = view.findViewById(R.id.textCurrentPlayerSummary);
-        currentPlayerIdInput = view.findViewById(R.id.editCurrentPlayerId);
-        latitudeInput = view.findViewById(R.id.editLatitude);
-        longitudeInput = view.findViewById(R.id.editLongitude);
-        catchTargetPlayerIdInput = view.findViewById(R.id.editCatchTargetPlayerId);
-        catchCodeInput = view.findViewById(R.id.editCatchCode);
-        submitLocationButton = view.findViewById(R.id.buttonSubmitLocation);
-        claimHotspotButton = view.findViewById(R.id.buttonClaimHotspot);
-        submitCatchCodeButton = view.findViewById(R.id.buttonSubmitCatchCode);
-        useHiderPowerupButton = view.findViewById(R.id.buttonUseHiderPowerup);
-        useSeekerPowerupButton = view.findViewById(R.id.buttonUseSeekerPowerup);
-        progressBar = view.findViewById(R.id.progressMatch);
-        statusTextView = view.findViewById(R.id.textMatchStatus);
+        // Bind views
+        shrinkBannerView            = view.findViewById(R.id.shrinkBannerView);
+        scoreTextView               = view.findViewById(R.id.textMatchScore);
+        gameFinishedTextView        = view.findViewById(R.id.textMatchFinished);
+        playerSummaryTextView       = view.findViewById(R.id.textCurrentPlayerSummary);
+        currentPlayerIdInput        = view.findViewById(R.id.editCurrentPlayerId);
+        latitudeInput               = view.findViewById(R.id.editLatitude);
+        longitudeInput              = view.findViewById(R.id.editLongitude);
+        catchTargetPlayerIdInput    = view.findViewById(R.id.editCatchTargetPlayerId);
+        catchCodeInput              = view.findViewById(R.id.editCatchCode);
+        submitLocationButton        = view.findViewById(R.id.buttonSubmitLocation);
+        claimHotspotButton          = view.findViewById(R.id.buttonClaimHotspot);
+        submitCatchCodeButton       = view.findViewById(R.id.buttonSubmitCatchCode);
+        useHiderPowerupButton       = view.findViewById(R.id.buttonUseHiderPowerup);
+        useSeekerPowerupButton      = view.findViewById(R.id.buttonUseSeekerPowerup);
+        progressBar                 = view.findViewById(R.id.progressMatch);
+        statusTextView              = view.findViewById(R.id.textMatchStatus);
 
-        // Initialize banner and map placeholder to match the state set in createContentView.
+        // Attach Google Map into the FrameLayout container
+        setupMap();
+
+        // Banner default state
         shrinkBannerView.bind(
                 "Match Active",
                 "Track players, claim hotspots, and use powerups.",
@@ -113,7 +154,6 @@ public class MatchFragment extends Fragment {
                 0,
                 ShrinkBannerView.BannerState.NORMAL
         );
-        mapViewContainer.setPlaceholderText("Map placeholder with player/hotspot overlay");
 
         bindListeners();
         bindObservers();
@@ -130,6 +170,87 @@ public class MatchFragment extends Fragment {
 
         renderCurrentState();
     }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        checkAndRequestLocationPermission();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (locationRepository != null) {
+            locationRepository.stopLocationUpdates();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Map setup
+    // -------------------------------------------------------------------------
+
+    private void setupMap() {
+        // Reuse an existing child fragment if the system already recreated it
+        SupportMapFragment mapFragment = (SupportMapFragment)
+                getChildFragmentManager().findFragmentById(R.id.mapContainer);
+
+        if (mapFragment == null) {
+            mapFragment = SupportMapFragment.newInstance();
+            getChildFragmentManager()
+                    .beginTransaction()
+                    .add(R.id.mapContainer, mapFragment)
+                    .commit();
+        }
+
+        mapFragment.getMapAsync(mapManager);
+    }
+
+    // -------------------------------------------------------------------------
+    // Location permission + updates
+    // -------------------------------------------------------------------------
+
+    private void checkAndRequestLocationPermission() {
+        if (ContextCompat.checkSelfPermission(
+                requireContext(), Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            startLocationUpdates();
+        } else {
+            requestPermissionLauncher.launch(new String[]{
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+            });
+        }
+    }
+
+    private void startLocationUpdates() {
+        // Use Firebase UID if available; otherwise fall back to a stable placeholder.
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        String userId = user != null ? user.getUid() : "local_player";
+
+        locationRepository.startLocationUpdates(userId, new LocationRepository.LocationUpdateCallback() {
+            @Override
+            public void onLocationUpdate(@NonNull PlayerLocation location) {
+                currentLocation = location;
+
+                // Auto-fill the lat/lng inputs so the player doesn't have to type them.
+                // They can still be edited manually for testing.
+                latitudeInput.setText(String.valueOf(location.getLatitude()));
+                longitudeInput.setText(String.valueOf(location.getLongitude()));
+
+                // Move the self marker on the real Google Map
+                mapManager.updateSelfLocation(location);
+            }
+
+            @Override
+            public void onError(@NonNull String errorMessage) {
+                showToast("GPS error: " + errorMessage);
+            }
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // Listeners and observers (game logic — unchanged)
+    // -------------------------------------------------------------------------
 
     private void bindListeners() {
         submitLocationButton.setOnClickListener(v -> submitLocation());
@@ -168,14 +289,14 @@ public class MatchFragment extends Fragment {
         });
 
         viewModel.getInsideHotspot().observe(getViewLifecycleOwner(), inside -> {
-            boolean isInside = Boolean.TRUE.equals(inside);
-            if (isInside) {
+            if (Boolean.TRUE.equals(inside)) {
                 shrinkBannerView.showSuccessState("You are inside an active hotspot.");
             }
         });
 
         viewModel.getClaimableHotspot().observe(getViewLifecycleOwner(), hotspot -> {
-            claimHotspotButton.setEnabled(hotspot != null && progressBar.getVisibility() != View.VISIBLE);
+            claimHotspotButton.setEnabled(
+                    hotspot != null && progressBar.getVisibility() != View.VISIBLE);
         });
 
         viewModel.getStatusMessage().observe(getViewLifecycleOwner(), message -> {
@@ -193,53 +314,52 @@ public class MatchFragment extends Fragment {
         });
     }
 
+    // -------------------------------------------------------------------------
+    // Game actions (unchanged — just read from the auto-populated inputs)
+    // -------------------------------------------------------------------------
+
     private void submitLocation() {
         String playerId = getTrimmedText(currentPlayerIdInput);
-        Double latitude = parseDouble(latitudeInput);
+        Double latitude  = parseDouble(latitudeInput);
         Double longitude = parseDouble(longitudeInput);
 
         if (playerId.isEmpty()) {
             showToast("Enter a current player ID first.");
             return;
         }
-
         if (latitude == null || longitude == null) {
             showToast("Enter valid latitude and longitude values.");
             return;
         }
-
         viewModel.submitLocation(playerId, latitude, longitude);
     }
 
     private void claimHotspot() {
         String playerId = getTrimmedText(currentPlayerIdInput);
-        Double latitude = parseDouble(latitudeInput);
+        Double latitude  = parseDouble(latitudeInput);
         Double longitude = parseDouble(longitudeInput);
 
         if (playerId.isEmpty()) {
             showToast("Enter a current player ID first.");
             return;
         }
-
         if (latitude == null || longitude == null) {
             showToast("Enter valid latitude and longitude values first.");
             return;
         }
-
         viewModel.claimHotspot(playerId, latitude, longitude);
     }
 
     private void submitCatchCode() {
-        String submittingPlayerId = getTrimmedText(currentPlayerIdInput);
-        String targetPlayerId = getTrimmedText(catchTargetPlayerIdInput);
-        String submittedCode = getTrimmedText(catchCodeInput);
+        String submittingId = getTrimmedText(currentPlayerIdInput);
+        String targetId     = getTrimmedText(catchTargetPlayerIdInput);
+        String code         = getTrimmedText(catchCodeInput);
 
-        if (submittingPlayerId.isEmpty() || targetPlayerId.isEmpty() || submittedCode.isEmpty()) {
+        if (submittingId.isEmpty() || targetId.isEmpty() || code.isEmpty()) {
             showToast("Enter submitting player ID, target player ID, and catch code.");
             return;
         }
-
-        viewModel.submitCatchCode(submittingPlayerId, targetPlayerId, submittedCode);
+        viewModel.submitCatchCode(submittingId, targetId, code);
     }
 
     private void usePowerup(@NonNull PowerupType powerupType) {
@@ -248,9 +368,12 @@ public class MatchFragment extends Fragment {
             showToast("Enter a current player ID first.");
             return;
         }
-
         viewModel.usePowerup(playerId, powerupType);
     }
+
+    // -------------------------------------------------------------------------
+    // Rendering
+    // -------------------------------------------------------------------------
 
     private void renderCurrentState() {
         renderGameState(viewModel.getGameStateValue());
@@ -263,7 +386,7 @@ public class MatchFragment extends Fragment {
             scoreTextView.setText("Score: 0");
             gameFinishedTextView.setText("Game Finished: No");
             shrinkBannerView.showInactiveState();
-            mapViewContainer.clearHotspots();
+            mapManager.updateHotspots(null);
             return;
         }
 
@@ -277,17 +400,17 @@ public class MatchFragment extends Fragment {
             shrinkBannerView.setProgressPercent(100);
         } else {
             long remainingMillis = Math.max(0L, state.getEndsAt() - TimeUitls.nowMillis());
-            String remainingText = TimeUitls.formatMinutesSeconds(remainingMillis);
             shrinkBannerView.bind(
                     "Match Active",
                     "Complete objectives before time runs out.",
-                    remainingText,
+                    TimeUitls.formatMinutesSeconds(remainingMillis),
                     calculateProgressPercent(state),
                     ShrinkBannerView.BannerState.NORMAL
             );
         }
 
-        mapViewContainer.setHotspots(state.getHotspots());
+        // Draw hotspot circles on the real map
+        mapManager.updateHotspots(state.getHotspots());
     }
 
     private void renderPlayerSummary(@Nullable Player player) {
@@ -303,14 +426,11 @@ public class MatchFragment extends Fragment {
                 .append("\nRole: ").append(player.getRole() != null ? player.getRole().name() : "UNKNOWN")
                 .append("\nCaught: ").append(player.isCaught() ? "Yes" : "No")
                 .append("\nLocation: ")
-                .append(player.getLatitude())
-                .append(", ")
-                .append(player.getLongitude());
+                .append(player.getLatitude()).append(", ").append(player.getLongitude());
 
         if (player.getHeldPowerup() != null) {
             summary.append("\nHeld Powerup: ").append(player.getHeldPowerup().name());
         }
-
         if (player.getActivePowerup() != null) {
             summary.append("\nActive Powerup: ").append(player.getActivePowerup().name());
         }
@@ -321,10 +441,7 @@ public class MatchFragment extends Fragment {
     private void renderPlayerMarkers() {
         GameState state = viewModel.getGameStateValue();
         Player currentPlayer = viewModel.getCurrentPlayerValue();
-
-        if (state == null) {
-            return;
-        }
+        if (state == null) return;
 
         List<PlayerMarkersRenderer.RenderablePlayerMarker> markers = playerMarkersRenderer.buildMarkers(
                 state.getPlayers(),
@@ -334,18 +451,8 @@ public class MatchFragment extends Fragment {
                 true
         );
 
-        StringBuilder placeholder = new StringBuilder("Map placeholder with players: ");
-        if (markers.isEmpty()) {
-            placeholder.append("none visible");
-        } else {
-            for (int i = 0; i < markers.size(); i++) {
-                placeholder.append(markers.get(i).getLabel());
-                if (i < markers.size() - 1) {
-                    placeholder.append(", ");
-                }
-            }
-        }
-        mapViewContainer.setPlaceholderText(placeholder.toString());
+        // Push markers to the real map (self marker is handled by GPS, others are shown here)
+        mapManager.updatePlayerMarkers(markers);
     }
 
     private boolean shouldRevealAllHiders(@Nullable Player player) {
@@ -365,14 +472,11 @@ public class MatchFragment extends Fragment {
 
     private int calculateProgressPercent(@NonNull GameState state) {
         long startedAt = state.getStartedAt();
-        long endsAt = state.getEndsAt();
+        long endsAt    = state.getEndsAt();
+        if (startedAt <= 0 || endsAt <= startedAt) return 0;
 
-        if (startedAt <= 0 || endsAt <= startedAt) {
-            return 0;
-        }
-
-        long total = endsAt - startedAt;
-        long elapsed = Math.max(0L, TimeUitls.nowMillis() - startedAt);
+        long total          = endsAt - startedAt;
+        long elapsed        = Math.max(0L, TimeUitls.nowMillis() - startedAt);
         long clampedElapsed = Math.min(elapsed, total);
         return (int) ((clampedElapsed * 100L) / total);
     }
@@ -383,15 +487,17 @@ public class MatchFragment extends Fragment {
         useHiderPowerupButton.setEnabled(enabled);
         useSeekerPowerupButton.setEnabled(enabled);
 
-        Boolean hotspotAvailable = viewModel.getClaimableHotspot().getValue() != null;
+        boolean hotspotAvailable = viewModel.getClaimableHotspot().getValue() != null;
         claimHotspotButton.setEnabled(enabled && hotspotAvailable);
     }
 
+    // -------------------------------------------------------------------------
+    // Utilities
+    // -------------------------------------------------------------------------
+
     @NonNull
     private String getTrimmedText(@Nullable EditText editText) {
-        if (editText == null || editText.getText() == null) {
-            return "";
-        }
+        if (editText == null || editText.getText() == null) return "";
         return editText.getText().toString().trim();
     }
 
@@ -399,19 +505,14 @@ public class MatchFragment extends Fragment {
     private Double parseDouble(@Nullable EditText editText) {
         try {
             String text = getTrimmedText(editText);
-            if (text.isEmpty()) {
-                return null;
-            }
-            return Double.parseDouble(text);
+            return text.isEmpty() ? null : Double.parseDouble(text);
         } catch (NumberFormatException e) {
             return null;
         }
     }
 
     private void showToast(@NonNull String message) {
-        if (!isAdded()) {
-            return;
-        }
+        if (!isAdded()) return;
         Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
     }
 }

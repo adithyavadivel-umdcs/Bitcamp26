@@ -33,9 +33,9 @@
             android:text="Game Finished: No"
             android:textSize="15sp" />
 
-        <!-- Map placeholder with hotspot overlay -->
-        <com.example.bitcamp26.feature.match.components.MapViewContainer
-            android:id="@+id/mapViewContainer"
+        <!-- Google Map — SupportMapFragment is added here programmatically by MatchFragment -->
+        <FrameLayout
+            android:id="@+id/mapContainer"
             android:layout_width="match_parent"
             android:layout_height="260dp"
             android:layout_marginBottom="12dp" />
