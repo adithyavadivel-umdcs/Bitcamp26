@@ -37,6 +37,8 @@ public class AuthActivity extends AppCompatActivity {
         authRepository = new AuthRepository();
         setContentView(createContentView());
 
+        signInButton.setText("Sign In / Continue as Guest");
+
         if (authRepository.isSignedIn()) {
             openMainScreen();
             return;
@@ -86,7 +88,7 @@ public class AuthActivity extends AppCompatActivity {
         root.addView(progressBar, progressParams);
 
         signInButton = new Button(this);
-        signInButton.setText("Sign In Anonymously");
+        signInButton.setText("Sign In / Continue as Guest");
         root.addView(signInButton, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -106,11 +108,19 @@ public class AuthActivity extends AppCompatActivity {
                 }
 
                 setLoading(false);
-                Toast.makeText(
-                        AuthActivity.this,
-                        "Signed in successfully.",
-                        Toast.LENGTH_SHORT
-                ).show();
+                if (user != null) {
+                    Toast.makeText(
+                            AuthActivity.this,
+                            "Signed in successfully.",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                } else {
+                    Toast.makeText(
+                            AuthActivity.this,
+                            "Continuing in guest mode.",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                }
                 openMainScreen();
             }
 
@@ -123,7 +133,7 @@ public class AuthActivity extends AppCompatActivity {
                 setLoading(false);
                 Toast.makeText(
                         AuthActivity.this,
-                        errorMessage,
+                        "Sign-in failed. Please try again.",
                         Toast.LENGTH_LONG
                 ).show();
             }
@@ -133,7 +143,7 @@ public class AuthActivity extends AppCompatActivity {
     private void setLoading(boolean isLoading) {
         progressBar.setVisibility(isLoading ? ProgressBar.VISIBLE : ProgressBar.GONE);
         signInButton.setEnabled(!isLoading);
-        signInButton.setText(isLoading ? "Signing In..." : "Sign In Anonymously");
+        signInButton.setText(isLoading ? "Signing In..." : "Sign In / Continue as Guest");
     }
 
     private void openMainScreen() {

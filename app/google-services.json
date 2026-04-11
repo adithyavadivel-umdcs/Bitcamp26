@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "890066874925",
+    "project_id": "bitcamp26",
+    "storage_bucket": "bitcamp26.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:890066874925:android:011b7573ba4028ad477ea4",
+        "android_client_info": {
+          "package_name": "com.example.bitcamp26"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBTc5mPeY2AEW3aTvtfDA-Y0VA-EOwftgk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
