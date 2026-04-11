@@ -7,6 +7,7 @@ import androidx.health.connect.client.HealthConnectClient;
 import androidx.health.connect.client.permission.HealthPermission;
 import androidx.health.connect.client.records.StepsRecord;
 import androidx.health.connect.client.request.ReadRecordsRequest;
+import androidx.health.connect.client.response.ReadRecordsResponse;
 import androidx.health.connect.client.time.TimeRangeFilter;
 
 import java.time.Instant;
@@ -18,11 +19,23 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
+// TODO: This class should be rewritten in Kotlin so it can call Health Connect suspend functions
+//       natively with coroutines instead of using JvmClassMappingKt and BuildersKt.runBlocking.
+import kotlin.coroutines.EmptyCoroutineContext;
+import kotlin.jvm.JvmClassMappingKt;
+import kotlin.reflect.KClass;
+import kotlinx.coroutines.BuildersKt;
+
 /**
- * Repository for reading step count data.
+ * Repository for reading step count data via the Health Connect SDK.
  *
- * This implementation uses Health Connect when available.
- * The caller is responsible for checking availability and requesting permissions.
+ * The caller is responsible for checking availability and requesting permissions before use.
+ *
+ * Note: Health Connect is a Kotlin-first SDK. The three Java interop adaptations below are
+ * necessary until this class is ported to Kotlin:
+ *   1. JvmClassMappingKt.getKotlinClass() — converts Java Class to KClass for SDK APIs
+ *   2. ReadRecordsRequest built with KClass explicitly
+ *   3. BuildersKt.runBlocking() — bridges suspend functions onto the background executor thread
  */
 public class StepsRepository {
 
@@ -44,7 +57,9 @@ public class StepsRepository {
      */
     @NonNull
     public static Set<String> getRequiredPermissions() {
-        return Collections.singleton(HealthPermission.getReadPermission(StepsRecord.class));
+        // TODO: KClass required because HealthPermission.getReadPermission() is Kotlin-first.
+        KClass<StepsRecord> kClass = JvmClassMappingKt.getKotlinClass(StepsRecord.class);
+        return Collections.singleton(HealthPermission.getReadPermission(kClass));
     }
 
     /**
@@ -65,14 +80,30 @@ public class StepsRepository {
                                     @NonNull final StepsCallback callback) {
         executor.execute(() -> {
             try {
-                ReadRecordsRequest<StepsRecord> request = new ReadRecordsRequest<>(
-                        StepsRecord.class,
-                        TimeRangeFilter.between(start, end)
+                // TODO: BuildersKt.runBlocking blocks this executor thread to bridge the
+                //       Kotlin suspend API. Safe here because we are not on the main thread.
+                //       Replace with a proper coroutine scope when porting to Kotlin.
+                KClass<StepsRecord> kClass = JvmClassMappingKt.getKotlinClass(StepsRecord.class);
+                // ReadRecordsRequest has no @JvmOverloads; all 6 params required from Java.
+                // Remaining args are the Kotlin defaults: empty filter, ascending, 1000 page size, no token.
+                ReadRecordsRequest<StepsRecord> request = new ReadRecordsRequest<StepsRecord>(
+                        kClass,
+                        TimeRangeFilter.between(start, end),
+                        Collections.emptySet(),
+                        true,
+                        1000,
+                        null
                 );
 
-                List<StepsRecord> records = healthConnectClient.readRecords(request).getRecords();
-                long totalSteps = 0L;
+                @SuppressWarnings("unchecked")
+                ReadRecordsResponse<StepsRecord> response =
+                        (ReadRecordsResponse<StepsRecord>) BuildersKt.runBlocking(
+                                EmptyCoroutineContext.INSTANCE,
+                                (scope, cont) -> healthConnectClient.readRecords(request, cont)
+                        );
 
+                List<StepsRecord> records = response.getRecords();
+                long totalSteps = 0L;
                 for (StepsRecord record : records) {
                     totalSteps += record.getCount();
                 }

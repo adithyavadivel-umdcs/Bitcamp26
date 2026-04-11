@@ -2,14 +2,11 @@
 package com.example.bitcamp26.feature.lobby;
 
 import android.os.Bundle;
-import android.text.InputType;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -18,6 +15,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import com.example.bitcamp26.R;
 import com.example.bitcamp26.core.model.Lobby;
 import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.util.CodeUtils;
@@ -56,61 +54,22 @@ public class LobbyFragment extends Fragment {
                              @Nullable Bundle savedInstanceState) {
         lobbyRepository = new LobbyRepository();
         authRepository = new AuthRepository();
-        return createContentView();
+        return inflater.inflate(R.layout.fragment_lobby, container, false);
     }
 
-    private View createContentView() {
-        if (requireContext() == null) {
-            return new View(getContext());
-        }
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
 
-        int padding = dpToPx(20);
-
-        LinearLayout root = new LinearLayout(requireContext());
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(padding, padding, padding, padding);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
-
-        TextView title = new TextView(requireContext());
-        title.setText("Lobby");
-        title.setTextSize(26f);
-        title.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.addView(title, createMatchWrapParams(0, 24));
-
-        displayNameInput = new EditText(requireContext());
-        displayNameInput.setHint("Enter display name");
-        root.addView(displayNameInput, createMatchWrapParams(0, 16));
-
-        lobbyCodeInput = new EditText(requireContext());
-        lobbyCodeInput.setHint("Enter lobby code to join");
-        lobbyCodeInput.setInputType(InputType.TYPE_CLASS_TEXT);
-        root.addView(lobbyCodeInput, createMatchWrapParams(0, 16));
-
-        createLobbyButton = new Button(requireContext());
-        createLobbyButton.setText("Create Lobby");
-        root.addView(createLobbyButton, createMatchWrapParams(0, 12));
-
-        joinLobbyButton = new Button(requireContext());
-        joinLobbyButton.setText("Join Lobby");
-        root.addView(joinLobbyButton, createMatchWrapParams(0, 16));
-
-        progressBar = new ProgressBar(requireContext());
-        progressBar.setVisibility(View.GONE);
-        root.addView(progressBar, createWrapWrapParams(0, 16));
-
-        statusTextView = new TextView(requireContext());
-        statusTextView.setText("Create a new lobby or join with a code.");
-        statusTextView.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.addView(statusTextView, createMatchWrapParams(0, 0));
+        displayNameInput = view.findViewById(R.id.editDisplayName);
+        lobbyCodeInput = view.findViewById(R.id.editLobbyCode);
+        createLobbyButton = view.findViewById(R.id.buttonCreateLobby);
+        joinLobbyButton = view.findViewById(R.id.buttonJoinLobby);
+        progressBar = view.findViewById(R.id.progressLobby);
+        statusTextView = view.findViewById(R.id.textLobbyStatus);
 
         createLobbyButton.setOnClickListener(v -> createLobby());
         joinLobbyButton.setOnClickListener(v -> joinLobby());
-
-        return root;
     }
 
     private void createLobby() {
@@ -295,29 +254,4 @@ public class LobbyFragment extends Fragment {
         return editText.getText().toString().trim();
     }
 
-    @NonNull
-    private LinearLayout.LayoutParams createMatchWrapParams(int topMarginDp, int bottomMarginDp) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        params.topMargin = dpToPx(topMarginDp);
-        params.bottomMargin = dpToPx(bottomMarginDp);
-        return params;
-    }
-
-    @NonNull
-    private LinearLayout.LayoutParams createWrapWrapParams(int topMarginDp, int bottomMarginDp) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        params.topMargin = dpToPx(topMarginDp);
-        params.bottomMargin = dpToPx(bottomMarginDp);
-        return params;
-    }
-
-    private int dpToPx(int dp) {
-        return Math.round(dp * requireContext().getResources().getDisplayMetrics().density);
-    }
 }

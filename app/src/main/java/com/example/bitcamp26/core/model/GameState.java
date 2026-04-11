@@ -1,23 +1,77 @@
 package com.example.bitcamp26.core.model;
 
+import java.util.List;
+
 /**
- * Represents every phase the game can be in.
- * Server is the single source of truth for state transitions.
+ * Represents the live state of an active match.
+ * Must have a no-arg constructor for Firebase deserialization.
  */
-public enum GameState {
-    /** Lobby exists, players are joining */
-    LOBBY,
+public class GameState {
 
-    /** All players ready, waiting for host to start */
-    READY_CHECK,
+    private boolean started;
+    private boolean finished;
+    private int score;
+    private long startedAt;
+    private long endsAt;
+    private List<Player> players;
+    private List<HotspotState> hotspots;
 
-    /** Head start: seeker is frozen, hiders are running */
-    HEAD_START,
+    public GameState() {
+    }
 
-    /** Active match in progress */
-    ACTIVE,
+    public boolean isStarted() {
+        return started;
+    }
 
-    /** Match is over, winner determined */
-    FINISHED
+    public void setStarted(boolean started) {
+        this.started = started;
+    }
+
+    public boolean isFinished() {
+        return finished;
+    }
+
+    public void setFinished(boolean finished) {
+        this.finished = finished;
+    }
+
+    public int getScore() {
+        return score;
+    }
+
+    public void setScore(int score) {
+        this.score = score;
+    }
+
+    public long getStartedAt() {
+        return startedAt;
+    }
+
+    public void setStartedAt(long startedAt) {
+        this.startedAt = startedAt;
+    }
+
+    public long getEndsAt() {
+        return endsAt;
+    }
+
+    public void setEndsAt(long endsAt) {
+        this.endsAt = endsAt;
+    }
+
+    public List<Player> getPlayers() {
+        return players;
+    }
+
+    public void setPlayers(List<Player> players) {
+        this.players = players;
+    }
+
+    public List<HotspotState> getHotspots() {
+        return hotspots;
+    }
+
+    public void setHotspots(List<HotspotState> hotspots) {
+        this.hotspots = hotspots;
+    }
 }
-
