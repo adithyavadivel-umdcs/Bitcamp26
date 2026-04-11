@@ -1,0 +1,22 @@
+# Final Decisions Locked
+
+- Android first
+- Foreground-only gameplay in MVP
+- Invite-code lobbies only
+- No friend-of-friend feature
+- No public discovery
+- No same-building auto-catch
+- No image system
+- No voting system
+- No computer vision
+- Code-based catch system
+- Seeker can only eliminate hiders by entering the correct 6-digit code while that hider is catch-eligible
+- Multiple hotspots
+- Tap-to-claim hotspots
+- First valid claim wins
+- Hotspots are single-use for the whole game
+- Two powerups only
+- Local step counting only
+- Level display only, no cosmetics backend
+- Rally point via Google Maps intent
+- Firebase Realtime Database stays
