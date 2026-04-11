@@ -167,6 +167,16 @@ public class LobbyFragment extends Fragment {
                     }
                 }
 
+                // Firebase enum deserialization silently drops the role field on read.
+                // Repair any null roles before writing back so the host's SEEKER role
+                // is not permanently overwritten with null by this updateLobby call.
+                for (int i = 0; i < players.size(); i++) {
+                    Player p = players.get(i);
+                    if (p != null && p.getRole() == null) {
+                        p.setRole(i == 0 ? PlayerRole.SEEKER : PlayerRole.HIDER);
+                    }
+                }
+
                 Player player = new Player();
                 player.setId(userId);
                 player.setDisplayName(displayName);

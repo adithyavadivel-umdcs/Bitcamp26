@@ -8,6 +8,7 @@ public class Player {
 
     private String id;
     private String displayName;
+    private boolean ready;
     private boolean caught;
     private String caughtBy;
     private long caughtAt;
@@ -38,6 +39,14 @@ public class Player {
 
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
+    }
+
+    public boolean isReady() {
+        return ready;
+    }
+
+    public void setReady(boolean ready) {
+        this.ready = ready;
     }
 
     public boolean isCaught() {

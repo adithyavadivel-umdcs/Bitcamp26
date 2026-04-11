@@ -4,11 +4,17 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.example.bitcamp26.core.model.Lobby;
+import com.example.bitcamp26.core.model.Player;
+import com.example.bitcamp26.core.model.PlayerRole;
+import com.example.bitcamp26.core.model.PowerupType;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Remote data source for reading and writing lobby data in Firebase Realtime Database.
@@ -75,7 +81,7 @@ public class LobbyRemoteDataSource {
                         return;
                     }
 
-                    Lobby lobby = snapshot.getValue(Lobby.class);
+                    Lobby lobby = parseLobby(snapshot);
                     if (lobby == null) {
                         callback.onError("Lobby data is empty or malformed.");
                         return;
@@ -145,7 +151,7 @@ public class LobbyRemoteDataSource {
                     return;
                 }
 
-                Lobby lobby = snapshot.getValue(Lobby.class);
+                Lobby lobby = parseLobby(snapshot);
                 if (lobby == null) {
                     callback.onError("Lobby data is empty or malformed.");
                     return;
@@ -171,6 +177,92 @@ public class LobbyRemoteDataSource {
                                     @Nullable ValueEventListener listener) {
         if (listener != null) {
             lobbiesRef.child(lobbyCode).removeEventListener(listener);
+        }
+    }
+
+    private Lobby parseLobby(DataSnapshot snapshot) {
+        Lobby lobby = new Lobby();
+        lobby.setCode(snapshot.child("code").getValue(String.class));
+        
+        Boolean started = snapshot.child("started").getValue(Boolean.class);
+        lobby.setStarted(started != null && started);
+        
+        Long maxPlayers = snapshot.child("maxPlayers").getValue(Long.class);
+        lobby.setMaxPlayers(maxPlayers != null ? maxPlayers.intValue() : 0);
+        
+        Long duration = snapshot.child("matchDurationSeconds").getValue(Long.class);
+        lobby.setMatchDurationSeconds(duration != null ? duration : 0L);
+        
+        Long playerCount = snapshot.child("playerCount").getValue(Long.class);
+        lobby.setPlayerCount(playerCount != null ? playerCount.intValue() : 0);
+
+        List<Player> players = new ArrayList<>();
+        DataSnapshot playersSnapshot = snapshot.child("players");
+        for (DataSnapshot playerSnapshot : playersSnapshot.getChildren()) {
+            Player p = parsePlayer(playerSnapshot);
+            if (p != null) {
+                players.add(p);
+            }
+        }
+        lobby.setPlayers(players);
+        return lobby;
+    }
+
+    private Player parsePlayer(DataSnapshot snapshot) {
+        Player player = new Player();
+        player.setId(snapshot.child("id").getValue(String.class));
+        player.setDisplayName(snapshot.child("displayName").getValue(String.class));
+        
+        Boolean ready = snapshot.child("ready").getValue(Boolean.class);
+        player.setReady(ready != null && ready);
+        
+        Boolean caught = snapshot.child("caught").getValue(Boolean.class);
+        player.setCaught(caught != null && caught);
+        
+        player.setCaughtBy(snapshot.child("caughtBy").getValue(String.class));
+        
+        Long caughtAt = snapshot.child("caughtAt").getValue(Long.class);
+        player.setCaughtAt(caughtAt != null ? caughtAt : 0L);
+        
+        player.setCatchCode(snapshot.child("catchCode").getValue(String.class));
+
+        String roleStr = snapshot.child("role").getValue(String.class);
+        if (roleStr != null) {
+            try {
+                player.setRole(PlayerRole.valueOf(roleStr));
+            } catch (IllegalArgumentException e) {
+                player.setRole(null);
+            }
+        }
+
+        Double lat = snapshot.child("latitude").getValue(Double.class);
+        player.setLatitude(lat != null ? lat : 0.0);
+        
+        Double lon = snapshot.child("longitude").getValue(Double.class);
+        player.setLongitude(lon != null ? lon : 0.0);
+        
+        Long lastUpdate = snapshot.child("lastLocationUpdatedAt").getValue(Long.class);
+        player.setLastLocationUpdatedAt(lastUpdate != null ? lastUpdate : 0L);
+
+        player.setHeldPowerup(parsePowerup(snapshot.child("heldPowerup")));
+        player.setActivePowerup(parsePowerup(snapshot.child("activePowerup")));
+
+        Long pActivatedAt = snapshot.child("powerupActivatedAt").getValue(Long.class);
+        player.setPowerupActivatedAt(pActivatedAt != null ? pActivatedAt : 0L);
+        
+        Long pExpiresAt = snapshot.child("powerupExpiresAt").getValue(Long.class);
+        player.setPowerupExpiresAt(pExpiresAt != null ? pExpiresAt : 0L);
+
+        return player;
+    }
+
+    private PowerupType parsePowerup(DataSnapshot snapshot) {
+        String typeStr = snapshot.getValue(String.class);
+        if (typeStr == null) return null;
+        try {
+            return PowerupType.valueOf(typeStr);
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 

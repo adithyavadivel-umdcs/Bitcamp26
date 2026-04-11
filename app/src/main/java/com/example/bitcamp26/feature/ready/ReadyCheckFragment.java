@@ -19,6 +19,8 @@ import com.example.bitcamp26.core.model.Lobby;
 import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.model.PlayerRole;
 import com.example.bitcamp26.core.util.TimeUitls;
+import com.example.bitcamp26.data.lobby.LobbyRepository;
+import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +42,10 @@ public class ReadyCheckFragment extends Fragment {
     private Button startMatchButton;
     private ProgressBar progressBar;
 
+    private LobbyRepository lobbyRepository;
+    private ValueEventListener lobbyListener;
+    private String observedLobbyCode;
+
     private Lobby currentLobby;
     private String currentPlayerId;
     private boolean currentPlayerReady;
@@ -55,6 +61,7 @@ public class ReadyCheckFragment extends Fragment {
                              @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
         readyCheckOpenedAt = TimeUitls.nowMillis();
+        lobbyRepository = new LobbyRepository();
         seedPlaceholderLobbyIfNeeded();
         return inflater.inflate(R.layout.fragment_ready_check, container, false);
     }
@@ -76,6 +83,13 @@ public class ReadyCheckFragment extends Fragment {
 
         bindListeners();
         refreshUi();
+        startObservingLobby();
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        stopObservingLobby();
     }
 
     /**
@@ -130,6 +144,7 @@ public class ReadyCheckFragment extends Fragment {
                 ? "You are marked ready."
                 : "You are marked not ready.");
         refreshUi();
+        updateLobbyReady();
     }
 
     private void markEveryoneReadyForDemo() {
@@ -148,6 +163,7 @@ public class ReadyCheckFragment extends Fragment {
         currentPlayerReady = true;
         showStatus("All players marked ready for demo purposes.");
         refreshUi();
+        updateLobbyReady();
     }
 
     private void startMatchIfPossible() {
@@ -326,32 +342,12 @@ public class ReadyCheckFragment extends Fragment {
         return true;
     }
 
-    /**
-     * MVP/local ready-state rule.
-     *
-     * Since the Player model may not yet have a dedicated ready boolean, this method
-     * uses the player's active powerup timestamps/fields only if you later want to swap
-     * to a model-backed solution. For now, we derive readiness from catch-code presence
-     * plus current-player local toggle only for the active user, and treat everyone else
-     * as not ready unless marked through the demo helper.
-     *
-     * To keep this fragment stable without forcing model edits, we store readiness in the
-     * player's displayName suffix: "[READY]". That is not ideal for production, but it is
-     * safe for MVP/local testing until the Player model gets a dedicated field.
-     */
     private boolean isPlayerReady(@NonNull Player player) {
-        String displayName = player.getDisplayName();
-        return displayName != null && displayName.contains("[READY]");
+        return player.isReady();
     }
 
     private void applyReadyStateToPlayer(@NonNull Player player, boolean ready) {
-        String name = player.getDisplayName();
-        if (name == null || name.trim().isEmpty()) {
-            name = "Player";
-        }
-
-        String cleaned = name.replace("[READY]", "").trim();
-        player.setDisplayName(ready ? cleaned + " [READY]" : cleaned);
+        player.setReady(ready);
     }
 
     @NonNull
@@ -386,8 +382,9 @@ public class ReadyCheckFragment extends Fragment {
 
         Player p1 = new Player();
         p1.setId("player_host");
-        p1.setDisplayName("Host Player [READY]");
+        p1.setDisplayName("Host Player");
         p1.setRole(PlayerRole.SEEKER);
+        p1.setReady(true);
         p1.setCaught(false);
 
         Player p2 = new Player();
@@ -412,6 +409,60 @@ public class ReadyCheckFragment extends Fragment {
         currentLobby = lobby;
         currentPlayerId = "player_me";
         syncCurrentPlayerReadyFromLobby();
+    }
+
+    private void startObservingLobby() {
+        if (currentLobby == null || currentLobby.getCode() == null) {
+            return;
+        }
+        if (lobbyListener != null) {
+            return;
+        }
+        observedLobbyCode = currentLobby.getCode();
+        lobbyListener = lobbyRepository.observeLobby(observedLobbyCode, new LobbyRepository.LobbyCallback() {
+            @Override
+            public void onSuccess(@NonNull Lobby lobby) {
+                currentLobby = lobby;
+                syncCurrentPlayerReadyFromLobby();
+                refreshUi();
+            }
+
+            @Override
+            public void onError(@NonNull String message) {
+                if (!isAdded()) {
+                    return;
+                }
+                showStatus("Lobby sync error: " + message);
+            }
+        });
+    }
+
+    private void stopObservingLobby() {
+        if (observedLobbyCode != null && lobbyListener != null) {
+            lobbyRepository.removeLobbyObserver(observedLobbyCode, lobbyListener);
+        }
+        lobbyListener = null;
+        observedLobbyCode = null;
+    }
+
+    private void updateLobbyReady() {
+        if (currentLobby == null || currentLobby.getCode() == null) {
+            return;
+        }
+        lobbyRepository.updateLobby(currentLobby.getCode(), currentLobby, new LobbyRepository.LobbyCallback() {
+            @Override
+            public void onSuccess(@NonNull Lobby lobby) {
+                // No-op: the active observer will receive the updated state
+            }
+
+            @Override
+            public void onError(@NonNull String message) {
+                if (!isAdded()) {
+                    return;
+                }
+                showStatus("Failed to sync ready state: " + message);
+            }
+        });
     }
 
     private void showStatus(@NonNull String message) {
