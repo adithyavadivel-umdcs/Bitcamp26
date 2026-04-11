@@ -29,7 +29,7 @@ import java.util.List;
 
 /**
  * Fragment that represents a simple ready-check screen before a match starts.
- * sds
+ * sdssds
  */
 public class ReadyCheckFragment extends Fragment {
 
