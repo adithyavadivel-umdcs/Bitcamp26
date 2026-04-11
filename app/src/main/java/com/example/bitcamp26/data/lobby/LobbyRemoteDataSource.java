@@ -16,6 +16,7 @@ import com.google.firebase.database.ValueEventListener;
 public class LobbyRemoteDataSource {
 
     private static final String LOBBIES_NODE = "lobbies";
+    private static final long WRITE_TIMEOUT_MS = 10_000L;
 
     private final DatabaseReference lobbiesRef;
 
@@ -33,9 +34,32 @@ public class LobbyRemoteDataSource {
     public void createLobby(@NonNull String lobbyCode,
                             @NonNull Lobby lobby,
                             @NonNull final LobbyWriteCallback callback) {
+        android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+        boolean[] completed = {false};
+
+        Runnable timeoutRunnable = () -> {
+            if (!completed[0]) {
+                completed[0] = true;
+                callback.onError("Connection timed out. Check your network and try again.");
+            }
+        };
+        handler.postDelayed(timeoutRunnable, WRITE_TIMEOUT_MS);
+
         lobbiesRef.child(lobbyCode).setValue(lobby)
-                .addOnSuccessListener(unused -> callback.onSuccess())
-                .addOnFailureListener(e -> callback.onError(getMessageOrDefault(e, "Failed to create lobby.")));
+                .addOnSuccessListener(unused -> {
+                    if (!completed[0]) {
+                        completed[0] = true;
+                        handler.removeCallbacks(timeoutRunnable);
+                        callback.onSuccess();
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    if (!completed[0]) {
+                        completed[0] = true;
+                        handler.removeCallbacks(timeoutRunnable);
+                        callback.onError(getMessageOrDefault(e, "Failed to create lobby."));
+                    }
+                });
     }
 
     /**
@@ -68,9 +92,32 @@ public class LobbyRemoteDataSource {
     public void updateLobby(@NonNull String lobbyCode,
                             @NonNull Lobby lobby,
                             @NonNull final LobbyWriteCallback callback) {
+        android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+        boolean[] completed = {false};
+
+        Runnable timeoutRunnable = () -> {
+            if (!completed[0]) {
+                completed[0] = true;
+                callback.onError("Connection timed out. Check your network and try again.");
+            }
+        };
+        handler.postDelayed(timeoutRunnable, WRITE_TIMEOUT_MS);
+
         lobbiesRef.child(lobbyCode).setValue(lobby)
-                .addOnSuccessListener(unused -> callback.onSuccess())
-                .addOnFailureListener(e -> callback.onError(getMessageOrDefault(e, "Failed to update lobby.")));
+                .addOnSuccessListener(unused -> {
+                    if (!completed[0]) {
+                        completed[0] = true;
+                        handler.removeCallbacks(timeoutRunnable);
+                        callback.onSuccess();
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    if (!completed[0]) {
+                        completed[0] = true;
+                        handler.removeCallbacks(timeoutRunnable);
+                        callback.onError(getMessageOrDefault(e, "Failed to update lobby."));
+                    }
+                });
     }
 
     /**

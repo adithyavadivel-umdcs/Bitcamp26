@@ -93,11 +93,11 @@ public class LobbyFragment extends Fragment {
         lobbyRepository.createLobby(lobbyCode, lobby, new LobbyRepository.LobbyCallback() {
             @Override
             public void onSuccess(@NonNull Lobby createdLobby) {
+                setLoading(false);
                 if (!isAdded()) {
                     return;
                 }
 
-                setLoading(false);
                 String message = "Lobby created: " + CodeUtils.formatCodeForDisplay(lobbyCode);
                 statusTextView.setText(message);
                 lobbyCodeInput.setText(lobbyCode);
@@ -106,11 +106,11 @@ public class LobbyFragment extends Fragment {
 
             @Override
             public void onError(@NonNull String errorMessage) {
+                setLoading(false);
                 if (!isAdded()) {
                     return;
                 }
 
-                setLoading(false);
                 showMessage(errorMessage);
             }
         });
@@ -142,6 +142,7 @@ public class LobbyFragment extends Fragment {
             @Override
             public void onSuccess(@NonNull Lobby lobby) {
                 if (!isAdded()) {
+                    setLoading(false);
                     return;
                 }
 
@@ -173,11 +174,11 @@ public class LobbyFragment extends Fragment {
                 lobbyRepository.updateLobby(lobbyCode, lobby, new LobbyRepository.LobbyCallback() {
                     @Override
                     public void onSuccess(@NonNull Lobby updatedLobby) {
+                        setLoading(false);
                         if (!isAdded()) {
                             return;
                         }
 
-                        setLoading(false);
                         String message = "Joined lobby: " + CodeUtils.formatCodeForDisplay(lobbyCode);
                         statusTextView.setText(message);
                         Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show();
@@ -185,11 +186,11 @@ public class LobbyFragment extends Fragment {
 
                     @Override
                     public void onError(@NonNull String errorMessage) {
+                        setLoading(false);
                         if (!isAdded()) {
                             return;
                         }
 
-                        setLoading(false);
                         showMessage(errorMessage);
                     }
                 });
@@ -197,11 +198,11 @@ public class LobbyFragment extends Fragment {
 
             @Override
             public void onError(@NonNull String errorMessage) {
+                setLoading(false);
                 if (!isAdded()) {
                     return;
                 }
 
-                setLoading(false);
                 showMessage(errorMessage);
             }
         });
@@ -232,6 +233,9 @@ public class LobbyFragment extends Fragment {
     }
 
     private void setLoading(boolean isLoading) {
+        if (progressBar == null || createLobbyButton == null || joinLobbyButton == null) {
+            return;
+        }
         progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
         createLobbyButton.setEnabled(!isLoading);
         joinLobbyButton.setEnabled(!isLoading);
