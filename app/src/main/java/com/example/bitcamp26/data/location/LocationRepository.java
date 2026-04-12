@@ -1,123 +1,65 @@
 package com.example.bitcamp26.data.location;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-
-import com.example.bitcamp26.core.util.GeoUtils;
-import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.location.Priority;
-import com.google.android.gms.tasks.CancellationTokenSource;
-import com.google.android.gms.tasks.Task;
-
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.location.Location;
+import android.os.Looper;
+
+import androidx.annotation.NonNull;
+
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
 
 /**
- * Repository for reading the user's current device location.
- *
- * Note: the caller is responsible for ensuring location permissions
- * have already been granted before calling these methods.
+ * Repository for handling Android GPS location updates.
  */
 public class LocationRepository {
 
-    private final FusedLocationProviderClient fusedLocationClient;
+    private final FusedLocationProviderClient client;
+    private LocationCallback locationCallback;
 
     public LocationRepository(@NonNull Context context) {
-        this(LocationServices.getFusedLocationProviderClient(context.getApplicationContext()));
+        this.client = LocationServices.getFusedLocationProviderClient(context);
     }
 
-    public LocationRepository(@NonNull FusedLocationProviderClient fusedLocationClient) {
-        this.fusedLocationClient = fusedLocationClient;
-    }
-
-    /**
-     * Attempts to fetch the device's last known location.
-     */
     @SuppressLint("MissingPermission")
-    public void getLastKnownLocation(@NonNull final LocationCallback callback) {
-        fusedLocationClient.getLastLocation()
-                .addOnSuccessListener(location -> {
-                    if (location == null) {
-                        callback.onError("Last known location is unavailable.");
-                        return;
-                    }
+    public void startLocationUpdates(@NonNull String userId, @NonNull LocationUpdateCallback callback) {
+        stopLocationUpdates();
 
-                    callback.onSuccess(location);
-                })
-                .addOnFailureListener(e -> callback.onError(getMessageOrDefault(e, "Failed to get last known location.")));
+        LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000L)
+                .setMinUpdateIntervalMillis(1000L)
+                .build();
+
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(@NonNull LocationResult locationResult) {
+                if (locationResult.getLastLocation() != null) {
+                    callback.onLocationUpdate(new PlayerLocation(
+                            userId,
+                            locationResult.getLastLocation().getLatitude(),
+                            locationResult.getLastLocation().getLongitude(),
+                            System.currentTimeMillis()
+                    ));
+                }
+            }
+        };
+
+        client.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+                .addOnFailureListener(e -> callback.onError(e.getMessage() != null ? e.getMessage() : "Unknown GPS error"));
     }
 
-    /**
-     * Requests a fresh high-accuracy current location.
-     */
-    @SuppressLint("MissingPermission")
-    public void getCurrentLocation(@NonNull final LocationCallback callback) {
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        Task<Location> task = fusedLocationClient.getCurrentLocation(
-                Priority.PRIORITY_HIGH_ACCURACY,
-                cancellationTokenSource.getToken()
-        );
-
-        task.addOnSuccessListener(location -> {
-                    if (location == null) {
-                        callback.onError("Current location is unavailable.");
-                        return;
-                    }
-
-                    callback.onSuccess(location);
-                })
-                .addOnFailureListener(e -> callback.onError(getMessageOrDefault(e, "Failed to get current location.")));
-    }
-
-    /**
-     * Returns true if the given location lies within the provided radius of the target point.
-     */
-    public boolean isWithinRadius(@Nullable Location location,
-                                  double targetLat,
-                                  double targetLng,
-                                  double radiusMeters) {
-        if (location == null || radiusMeters < 0) {
-            return false;
+    public void stopLocationUpdates() {
+        if (locationCallback != null) {
+            client.removeLocationUpdates(locationCallback);
+            locationCallback = null;
         }
-
-        return GeoUtils.isWithinRadius(
-                targetLat,
-                targetLng,
-                location.getLatitude(),
-                location.getLongitude(),
-                radiusMeters
-        );
     }
 
-    /**
-     * Returns the distance in meters from the given location to a target point.
-     */
-    public double distanceTo(@Nullable Location location,
-                             double targetLat,
-                             double targetLng) {
-        if (location == null) {
-            return Double.MAX_VALUE;
-        }
-
-        return GeoUtils.distanceMeters(
-                location.getLatitude(),
-                location.getLongitude(),
-                targetLat,
-                targetLng
-        );
-    }
-
-    @NonNull
-    private String getMessageOrDefault(@Nullable Exception e, @NonNull String defaultMessage) {
-        return e != null && e.getMessage() != null && !e.getMessage().trim().isEmpty()
-                ? e.getMessage()
-                : defaultMessage;
-    }
-
-    public interface LocationCallback {
-        void onSuccess(@NonNull Location location);
+    public interface LocationUpdateCallback {
+        void onLocationUpdate(@NonNull PlayerLocation location);
         void onError(@NonNull String errorMessage);
     }
 }

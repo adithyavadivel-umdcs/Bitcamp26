@@ -83,13 +83,12 @@ public class AppNavigator {
     /**
      * Navigates to the active match screen.
      */
-    public void showMatch(@Nullable Lobby lobby,
-                          @Nullable GameState gameState,
+    public void showMatch(@Nullable GameState gameState,
                           @Nullable String currentPlayerId,
                           boolean addToBackStack) {
         MatchFragment fragment = new MatchFragment();
-        if (lobby != null || gameState != null || currentPlayerId != null) {
-            fragment.setInitialData(lobby, gameState, currentPlayerId);
+        if (gameState != null || currentPlayerId != null) {
+            fragment.setInitialData(gameState, currentPlayerId);
         }
         replaceFragment(fragment, Routes.MATCH, addToBackStack);
     }

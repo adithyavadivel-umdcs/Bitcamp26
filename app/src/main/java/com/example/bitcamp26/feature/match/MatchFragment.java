@@ -1,7 +1,9 @@
-
 package com.example.bitcamp26.feature.match;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.CountDownTimer;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -11,42 +13,55 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.example.bitcamp26.R;
 import com.example.bitcamp26.core.model.GameState;
+import com.example.bitcamp26.core.model.HotspotState;
+import com.example.bitcamp26.core.model.Lobby;
 import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.model.PlayerRole;
 import com.example.bitcamp26.core.model.PowerupType;
 import com.example.bitcamp26.core.util.TimeUitls;
-import com.example.bitcamp26.feature.match.components.MapViewContainer;
+import com.example.bitcamp26.data.lobby.LobbyRepository;
+import com.example.bitcamp26.data.location.LocationRepository;
+import com.example.bitcamp26.data.location.PlayerLocation;
 import com.example.bitcamp26.feature.match.components.PlayerMarkersRenderer;
 import com.example.bitcamp26.feature.match.components.ShrinkBannerView;
+import com.example.bitcamp26.feature.match.map.MapManager;
+import com.google.android.gms.maps.SupportMapFragment;
+import com.google.firebase.database.ValueEventListener;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Fragment that represents the active match screen.
- *
- * UI is defined in fragment_match.xml. This fragment connects to MatchViewModel
- * and exposes a functional match UI:
- *
- * - top shrink/status banner
- * - score and game status text
- * - placeholder map area with hotspot overlay support
- * - player details summary
- * - location submission controls
- * - claim hotspot action
- * - catch-code submission controls
- * - powerup usage controls
- * - realtime status/error output
+ * Fragment that represents the active match screen with GPS + map integration.
  */
 public class MatchFragment extends Fragment {
 
     private MatchViewModel viewModel;
+    private LobbyRepository lobbyRepository;
+    private LocationRepository locationRepository;
+
+    private Lobby initialLobby;
+    private Lobby currentLobby;
+    private GameState initialGameState;
+    private String initialCurrentPlayerId;
+
+    private ValueEventListener lobbyListener;
+    private String observedLobbyCode;
+    private CountDownTimer matchTimer;
+
+    private final MapManager mapManager = new MapManager();
+    private final PlayerMarkersRenderer playerMarkersRenderer = new PlayerMarkersRenderer();
+    private ActivityResultLauncher<String[]> requestPermissionLauncher;
 
     private ShrinkBannerView shrinkBannerView;
     private TextView scoreTextView;
@@ -54,9 +69,6 @@ public class MatchFragment extends Fragment {
     private TextView playerSummaryTextView;
     private TextView statusTextView;
     private ProgressBar progressBar;
-
-    private MapViewContainer mapViewContainer;
-    private final PlayerMarkersRenderer playerMarkersRenderer = new PlayerMarkersRenderer();
 
     private EditText currentPlayerIdInput;
     private EditText latitudeInput;
@@ -74,12 +86,38 @@ public class MatchFragment extends Fragment {
         // Required empty public constructor
     }
 
+    public void setInitialData(@Nullable Lobby lobby,
+                               @Nullable GameState gameState,
+                               @Nullable String currentPlayerId) {
+        this.initialLobby = lobby;
+        this.currentLobby = lobby;
+        this.initialGameState = gameState;
+        this.initialCurrentPlayerId = currentPlayerId;
+    }
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        requestPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestMultiplePermissions(),
+                result -> {
+                    if (Boolean.TRUE.equals(result.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false))) {
+                        startLocationUpdates();
+                    } else {
+                        setStatusMessage("Location permission denied. GPS tracking disabled.");
+                    }
+                }
+        );
+    }
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater,
                              @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
         viewModel = new ViewModelProvider(this).get(MatchViewModel.class);
+        lobbyRepository = new LobbyRepository();
+        locationRepository = new LocationRepository(requireContext());
         return inflater.inflate(R.layout.fragment_match, container, false);
     }
 
@@ -90,7 +128,6 @@ public class MatchFragment extends Fragment {
         shrinkBannerView = view.findViewById(R.id.shrinkBannerView);
         scoreTextView = view.findViewById(R.id.textMatchScore);
         gameFinishedTextView = view.findViewById(R.id.textMatchFinished);
-        mapViewContainer = view.findViewById(R.id.mapViewContainer);
         playerSummaryTextView = view.findViewById(R.id.textCurrentPlayerSummary);
         currentPlayerIdInput = view.findViewById(R.id.editCurrentPlayerId);
         latitudeInput = view.findViewById(R.id.editLatitude);
@@ -105,30 +142,71 @@ public class MatchFragment extends Fragment {
         progressBar = view.findViewById(R.id.progressMatch);
         statusTextView = view.findViewById(R.id.textMatchStatus);
 
-        // Initialize banner and map placeholder to match the state set in createContentView.
-        shrinkBannerView.bind(
-                "Match Active",
-                "Track players, claim hotspots, and use powerups.",
-                "05:00",
-                0,
-                ShrinkBannerView.BannerState.NORMAL
-        );
-        mapViewContainer.setPlaceholderText("Map placeholder with player/hotspot overlay");
+        currentPlayerIdInput.setText(resolveCurrentPlayerId());
+        currentPlayerIdInput.setVisibility(View.GONE);
+        latitudeInput.setVisibility(View.GONE);
+        longitudeInput.setVisibility(View.GONE);
+        submitLocationButton.setVisibility(View.GONE);
 
+        setupMap();
         bindListeners();
         bindObservers();
+        seedInitialState();
+        startObservingLobby();
+        renderCurrentState();
+    }
 
-        if (viewModel.getGameStateValue() == null) {
-            GameState placeholderState = new GameState();
-            placeholderState.setStarted(true);
-            placeholderState.setFinished(false);
-            placeholderState.setScore(0);
-            placeholderState.setStartedAt(TimeUitls.nowMillis());
-            placeholderState.setEndsAt(TimeUitls.minutesFromNow(5));
-            viewModel.setInitialState(placeholderState, null);
+    @Override
+    public void onResume() {
+        super.onResume();
+        checkAndRequestLocationPermission();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (locationRepository != null) {
+            locationRepository.stopLocationUpdates();
+        }
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        stopObservingLobby();
+        if (matchTimer != null) {
+            matchTimer.cancel();
+            matchTimer = null;
+        }
+        mapManager.clearAll();
+    }
+
+    private void seedInitialState() {
+        GameState state = initialGameState;
+        if (state == null && currentLobby != null) {
+            state = createGameStateFromLobby(currentLobby);
+        }
+        if (state == null) {
+            state = createPlaceholderGameState();
         }
 
-        renderCurrentState();
+        viewModel.setInitialState(state, resolveCurrentPlayerId());
+        startMatchTimerIfNeeded(state);
+    }
+
+    private void setupMap() {
+        SupportMapFragment mapFragment = (SupportMapFragment)
+                getChildFragmentManager().findFragmentById(R.id.mapContainer);
+
+        if (mapFragment == null) {
+            mapFragment = SupportMapFragment.newInstance();
+            getChildFragmentManager()
+                    .beginTransaction()
+                    .add(R.id.mapContainer, mapFragment)
+                    .commit();
+        }
+
+        mapFragment.getMapAsync(mapManager);
     }
 
     private void bindListeners() {
@@ -147,8 +225,7 @@ public class MatchFragment extends Fragment {
         });
 
         viewModel.getScore().observe(getViewLifecycleOwner(), score -> {
-            int safeScore = score != null ? score : 0;
-            scoreTextView.setText("Score: " + safeScore);
+            scoreTextView.setText("Score: " + (score != null ? score : 0));
         });
 
         viewModel.getGameFinished().observe(getViewLifecycleOwner(), finished -> {
@@ -168,8 +245,7 @@ public class MatchFragment extends Fragment {
         });
 
         viewModel.getInsideHotspot().observe(getViewLifecycleOwner(), inside -> {
-            boolean isInside = Boolean.TRUE.equals(inside);
-            if (isInside) {
+            if (Boolean.TRUE.equals(inside)) {
                 shrinkBannerView.showSuccessState("You are inside an active hotspot.");
             }
         });
@@ -180,17 +256,114 @@ public class MatchFragment extends Fragment {
 
         viewModel.getStatusMessage().observe(getViewLifecycleOwner(), message -> {
             if (message != null && !message.trim().isEmpty()) {
-                statusTextView.setText("Status: " + message);
-                showToast(message);
+                setStatusMessage("Status: " + message);
             }
         });
 
         viewModel.getErrorMessage().observe(getViewLifecycleOwner(), error -> {
             if (error != null && !error.trim().isEmpty()) {
-                statusTextView.setText("Error: " + error);
+                setStatusMessage("Error: " + error);
                 showToast(error);
             }
         });
+    }
+
+    private void startObservingLobby() {
+        if (currentLobby == null || currentLobby.getCode() == null || lobbyListener != null) {
+            return;
+        }
+
+        observedLobbyCode = currentLobby.getCode();
+        lobbyListener = lobbyRepository.observeLobby(observedLobbyCode, new LobbyRepository.LobbyCallback() {
+            @Override
+            public void onSuccess(@NonNull Lobby lobby) {
+                currentLobby = lobby;
+                GameState updatedState = mergeLobbyIntoGameState(lobby, viewModel.getGameStateValue());
+                viewModel.updateGameState(updatedState);
+                startMatchTimerIfNeeded(updatedState);
+            }
+
+            @Override
+            public void onError(@NonNull String errorMessage) {
+                setStatusMessage("Lobby sync error: " + errorMessage);
+            }
+        });
+    }
+
+    private void stopObservingLobby() {
+        if (observedLobbyCode != null && lobbyListener != null) {
+            lobbyRepository.removeLobbyObserver(observedLobbyCode, lobbyListener);
+        }
+        observedLobbyCode = null;
+        lobbyListener = null;
+    }
+
+    private void checkAndRequestLocationPermission() {
+        if (ContextCompat.checkSelfPermission(
+                requireContext(), Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            startLocationUpdates();
+        } else {
+            requestPermissionLauncher.launch(new String[]{
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+            });
+        }
+    }
+
+    private void startLocationUpdates() {
+        String playerId = resolveCurrentPlayerId();
+        if (playerId.isEmpty()) {
+            setStatusMessage("Missing current player ID for GPS tracking.");
+            return;
+        }
+
+        locationRepository.startLocationUpdates(playerId, new LocationRepository.LocationUpdateCallback() {
+            @Override
+            public void onLocationUpdate(@NonNull PlayerLocation location) {
+                if (getView() == null || latitudeInput == null || longitudeInput == null) {
+                    return;
+                }
+
+                latitudeInput.setText(String.valueOf(location.getLatitude()));
+                longitudeInput.setText(String.valueOf(location.getLongitude()));
+
+                Player player = viewModel.getCurrentPlayerValue();
+                mapManager.updateSelfLocation(location, player != null ? player.getDisplayName() : null);
+                viewModel.submitLocation(location.getUserId(), location.getLatitude(), location.getLongitude());
+                syncLocationToLobby(location);
+            }
+
+            @Override
+            public void onError(@NonNull String errorMessage) {
+                setStatusMessage("GPS error: " + errorMessage);
+            }
+        });
+    }
+
+    private void syncLocationToLobby(@NonNull PlayerLocation location) {
+        if (currentLobby == null || currentLobby.getCode() == null) {
+            return;
+        }
+
+        lobbyRepository.updatePlayerLocation(
+                currentLobby.getCode(),
+                location.getUserId(),
+                location.getLatitude(),
+                location.getLongitude(),
+                location.getTimestamp(),
+                new LobbyRepository.SimpleCallback() {
+                    @Override
+                    public void onSuccess() {
+                        // Live lobby observer will deliver the updated positions.
+                    }
+
+                    @Override
+                    public void onError(@NonNull String errorMessage) {
+                        setStatusMessage("Failed to sync location: " + errorMessage);
+                    }
+                }
+        );
     }
 
     private void submitLocation() {
@@ -202,13 +375,13 @@ public class MatchFragment extends Fragment {
             showToast("Enter a current player ID first.");
             return;
         }
-
         if (latitude == null || longitude == null) {
             showToast("Enter valid latitude and longitude values.");
             return;
         }
 
         viewModel.submitLocation(playerId, latitude, longitude);
+        syncLocationToLobby(new PlayerLocation(playerId, latitude, longitude, TimeUitls.nowMillis()));
     }
 
     private void claimHotspot() {
@@ -217,12 +390,11 @@ public class MatchFragment extends Fragment {
         Double longitude = parseDouble(longitudeInput);
 
         if (playerId.isEmpty()) {
-            showToast("Enter a current player ID first.");
+            showToast("Current player is unavailable.");
             return;
         }
-
         if (latitude == null || longitude == null) {
-            showToast("Enter valid latitude and longitude values first.");
+            showToast("Waiting for GPS location.");
             return;
         }
 
@@ -245,7 +417,7 @@ public class MatchFragment extends Fragment {
     private void usePowerup(@NonNull PowerupType powerupType) {
         String playerId = getTrimmedText(currentPlayerIdInput);
         if (playerId.isEmpty()) {
-            showToast("Enter a current player ID first.");
+            showToast("Current player is unavailable.");
             return;
         }
 
@@ -263,7 +435,7 @@ public class MatchFragment extends Fragment {
             scoreTextView.setText("Score: 0");
             gameFinishedTextView.setText("Game Finished: No");
             shrinkBannerView.showInactiveState();
-            mapViewContainer.clearHotspots();
+            mapManager.updateHotspots(null);
             return;
         }
 
@@ -277,17 +449,16 @@ public class MatchFragment extends Fragment {
             shrinkBannerView.setProgressPercent(100);
         } else {
             long remainingMillis = Math.max(0L, state.getEndsAt() - TimeUitls.nowMillis());
-            String remainingText = TimeUitls.formatMinutesSeconds(remainingMillis);
             shrinkBannerView.bind(
                     "Match Active",
                     "Complete objectives before time runs out.",
-                    remainingText,
+                    TimeUitls.formatMinutesSeconds(remainingMillis),
                     calculateProgressPercent(state),
                     ShrinkBannerView.BannerState.NORMAL
             );
         }
 
-        mapViewContainer.setHotspots(state.getHotspots());
+        mapManager.updateHotspots(state.getHotspots());
     }
 
     private void renderPlayerSummary(@Nullable Player player) {
@@ -310,7 +481,6 @@ public class MatchFragment extends Fragment {
         if (player.getHeldPowerup() != null) {
             summary.append("\nHeld Powerup: ").append(player.getHeldPowerup().name());
         }
-
         if (player.getActivePowerup() != null) {
             summary.append("\nActive Powerup: ").append(player.getActivePowerup().name());
         }
@@ -321,31 +491,18 @@ public class MatchFragment extends Fragment {
     private void renderPlayerMarkers() {
         GameState state = viewModel.getGameStateValue();
         Player currentPlayer = viewModel.getCurrentPlayerValue();
-
         if (state == null) {
             return;
         }
 
         List<PlayerMarkersRenderer.RenderablePlayerMarker> markers = playerMarkersRenderer.buildMarkers(
                 state.getPlayers(),
-                currentPlayer != null ? currentPlayer.getId() : null,
+                currentPlayer != null ? currentPlayer.getId() : resolveCurrentPlayerId(),
                 currentPlayer != null ? currentPlayer.getRole() : null,
                 shouldRevealAllHiders(currentPlayer),
                 true
         );
-
-        StringBuilder placeholder = new StringBuilder("Map placeholder with players: ");
-        if (markers.isEmpty()) {
-            placeholder.append("none visible");
-        } else {
-            for (int i = 0; i < markers.size(); i++) {
-                placeholder.append(markers.get(i).getLabel());
-                if (i < markers.size() - 1) {
-                    placeholder.append(", ");
-                }
-            }
-        }
-        mapViewContainer.setPlaceholderText(placeholder.toString());
+        mapManager.updatePlayerMarkers(markers);
     }
 
     private boolean shouldRevealAllHiders(@Nullable Player player) {
@@ -354,20 +511,124 @@ public class MatchFragment extends Fragment {
                 && player.getActivePowerup() == PowerupType.SEEKER_REVEAL_ALL;
     }
 
-    private void updateBannerForGameState(boolean isFinished) {
-        if (isFinished) {
-            shrinkBannerView.setBannerState(ShrinkBannerView.BannerState.DANGER);
+    private void updateBannerForGameState(boolean finished) {
+        if (finished) {
+            shrinkBannerView.showDangerState("00:00");
             shrinkBannerView.setTitle("Match Over");
-            shrinkBannerView.setMessage("No more actions can be performed.");
-            shrinkBannerView.setTimerText("00:00");
+            shrinkBannerView.setMessage("The game has ended.");
+            shrinkBannerView.setProgressPercent(100);
         }
+    }
+
+    private void setActionButtonsEnabled(boolean enabled) {
+        submitLocationButton.setEnabled(enabled);
+        submitCatchCodeButton.setEnabled(enabled);
+        useHiderPowerupButton.setEnabled(enabled);
+        useSeekerPowerupButton.setEnabled(enabled);
+
+        boolean hotspotAvailable = viewModel.getClaimableHotspot().getValue() != null;
+        claimHotspotButton.setEnabled(enabled && hotspotAvailable);
+    }
+
+    private void startMatchTimerIfNeeded(@Nullable GameState state) {
+        if (state == null || state.isFinished() || state.getEndsAt() <= 0) {
+            return;
+        }
+        if (matchTimer != null) {
+            return;
+        }
+
+        long remainingMillis = Math.max(0L, state.getEndsAt() - TimeUitls.nowMillis());
+        if (remainingMillis <= 0L) {
+            return;
+        }
+
+        matchTimer = new CountDownTimer(remainingMillis, 1000L) {
+            @Override
+            public void onTick(long millisUntilFinished) {
+                renderGameState(viewModel.getGameStateValue());
+            }
+
+            @Override
+            public void onFinish() {
+                GameState existingState = viewModel.getGameStateValue();
+                if (existingState != null) {
+                    existingState.setFinished(true);
+                    viewModel.updateGameState(existingState);
+                }
+                matchTimer = null;
+            }
+        }.start();
+    }
+
+    @NonNull
+    private GameState createGameStateFromLobby(@NonNull Lobby lobby) {
+        GameState state = initialGameState != null ? initialGameState : new GameState();
+        state.setStarted(true);
+        state.setFinished(false);
+        state.setPlayers(lobby.getPlayers());
+
+        if (initialGameState == null) {
+            state.setScore(0);
+            long now = TimeUitls.nowMillis();
+            state.setStartedAt(now);
+            long durationMillis = lobby.getMatchDurationSeconds() > 0
+                    ? lobby.getMatchDurationSeconds() * 1000L
+                    : 300_000L;
+            state.setEndsAt(now + durationMillis);
+            state.setHotspots(buildDefaultHotspots());
+        } else if (state.getHotspots() == null || state.getHotspots().isEmpty()) {
+            state.setHotspots(buildDefaultHotspots());
+        }
+
+        return state;
+    }
+
+    @NonNull
+    private GameState mergeLobbyIntoGameState(@NonNull Lobby lobby, @Nullable GameState existingState) {
+        GameState state = existingState != null ? existingState : createGameStateFromLobby(lobby);
+        state.setStarted(lobby.isStarted());
+        state.setPlayers(lobby.getPlayers());
+        if (state.getHotspots() == null || state.getHotspots().isEmpty()) {
+            state.setHotspots(buildDefaultHotspots());
+        }
+        if (state.getStartedAt() <= 0L) {
+            long now = TimeUitls.nowMillis();
+            state.setStartedAt(now);
+            long durationMillis = lobby.getMatchDurationSeconds() > 0
+                    ? lobby.getMatchDurationSeconds() * 1000L
+                    : 300_000L;
+            state.setEndsAt(now + durationMillis);
+        }
+        return state;
+    }
+
+    @NonNull
+    private GameState createPlaceholderGameState() {
+        GameState placeholderState = new GameState();
+        placeholderState.setStarted(true);
+        placeholderState.setFinished(false);
+        placeholderState.setScore(0);
+        placeholderState.setStartedAt(TimeUitls.nowMillis());
+        placeholderState.setEndsAt(TimeUitls.minutesFromNow(5));
+        placeholderState.setHotspots(buildDefaultHotspots());
+        placeholderState.setPlayers(new ArrayList<>());
+        return placeholderState;
+    }
+
+    @NonNull
+    private List<HotspotState> buildDefaultHotspots() {
+        List<HotspotState> hotspots = new ArrayList<>();
+        hotspots.add(new HotspotState("h1", 38.9869, -76.9426, 50, "HIDER_INVISIBILITY"));
+        hotspots.add(new HotspotState("h2", 38.9875, -76.9400, 30, "SEEKER_REVEAL_ALL"));
+        return hotspots;
     }
 
     private int calculateProgressPercent(@NonNull GameState state) {
         long startedAt = state.getStartedAt();
         long endsAt = state.getEndsAt();
 
-        if (startedAt <= 0 || endsAt <= startedAt) {
+        if (startedAt <= 0L || endsAt <= startedAt) {
             return 0;
         }
 
@@ -377,14 +638,19 @@ public class MatchFragment extends Fragment {
         return (int) ((clampedElapsed * 100L) / total);
     }
 
-    private void setActionButtonsEnabled(boolean enabled) {
-        submitLocationButton.setEnabled(enabled);
-        submitCatchCodeButton.setEnabled(enabled);
-        useHiderPowerupButton.setEnabled(enabled);
-        useSeekerPowerupButton.setEnabled(enabled);
+    @NonNull
+    private String resolveCurrentPlayerId() {
+        if (initialCurrentPlayerId != null && !initialCurrentPlayerId.trim().isEmpty()) {
+            return initialCurrentPlayerId.trim();
+        }
+        return getTrimmedText(currentPlayerIdInput);
+    }
 
-        Boolean hotspotAvailable = viewModel.getClaimableHotspot().getValue() != null;
-        claimHotspotButton.setEnabled(enabled && hotspotAvailable);
+    private void setStatusMessage(@NonNull String message) {
+        if (getView() == null || statusTextView == null) {
+            return;
+        }
+        statusTextView.setText(message);
     }
 
     @NonNull

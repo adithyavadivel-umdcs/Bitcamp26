@@ -15,15 +15,11 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.example.bitcamp26.R;
-import com.example.bitcamp26.core.model.GameState;
-import com.example.bitcamp26.core.model.HotspotState;
 import com.example.bitcamp26.core.model.Lobby;
 import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.model.PlayerRole;
 import com.example.bitcamp26.core.util.TimeUitls;
 import com.example.bitcamp26.data.lobby.LobbyRepository;
-import com.example.bitcamp26.navigation.AppNavigator;
-import com.example.bitcamp26.ui.MainActivity;
 import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
@@ -54,7 +50,6 @@ public class ReadyCheckFragment extends Fragment {
     private String currentPlayerId;
     private boolean currentPlayerReady;
     private long readyCheckOpenedAt;
-    private boolean hasNavigatedToMatch;
 
     public ReadyCheckFragment() {
         // Required empty public constructor
@@ -103,10 +98,6 @@ public class ReadyCheckFragment extends Fragment {
     public void setLobby(@Nullable Lobby lobby) {
         this.currentLobby = lobby;
         syncCurrentPlayerReadyFromLobby();
-        if (lobbyRepository != null) {
-            stopObservingLobby();
-            startObservingLobby();
-        }
         refreshUi();
     }
 
@@ -188,58 +179,13 @@ public class ReadyCheckFragment extends Fragment {
         }
 
         currentLobby.setStarted(true);
-        showStatus("All players ready. Starting match...");
+        showStatus("All players ready. Match can start now.");
         refreshUi();
-        lobbyRepository.updateLobby(currentLobby.getCode(), currentLobby, new LobbyRepository.LobbyCallback() {
-            @Override
-            public void onSuccess(@NonNull Lobby lobby) {
-                currentLobby = lobby;
-                refreshUi();
-            }
-
-            @Override
-            public void onError(@NonNull String message) {
-                currentLobby.setStarted(false);
-                refreshUi();
-                showStatus("Failed to start match: " + message);
-            }
-        });
-    }
-
-    private GameState createGameStateFromLobby(Lobby lobby) {
-        GameState state = new GameState();
-        state.setStarted(true);
-        state.setFinished(false);
-        state.setScore(0);
-        state.setPlayers(lobby.getPlayers());
-
-        long now = TimeUitls.nowMillis();
-        state.setStartedAt(now);
-
-        long durationMillis = lobby.getMatchDurationSeconds() * 1000L;
-        if (durationMillis <= 0) {
-            durationMillis = 300000L; // Default 5 minutes
-        }
-        state.setEndsAt(now + durationMillis);
-
-        // Add some sample hotspots near a default location
-        List<HotspotState> hotspots = new ArrayList<>();
-        hotspots.add(new HotspotState("h1", 38.9869, -76.9426, 50, "HIDER_INVISIBILITY"));
-        hotspots.add(new HotspotState("h2", 38.9875, -76.9400, 30, "SEEKER_REVEAL_ALL"));
-        state.setHotspots(hotspots);
-
-        return state;
+        showToast("Ready check complete. Start the match.");
     }
 
     private void refreshUi() {
-        if (getView() == null
-                || lobbySummaryTextView == null
-                || countdownTextView == null
-                || playersListTextView == null
-                || toggleReadyButton == null
-                || markAllReadyButton == null
-                || startMatchButton == null
-                || progressBar == null) {
+        if (!isAdded()) {
             return;
         }
 
@@ -480,9 +426,6 @@ public class ReadyCheckFragment extends Fragment {
                 currentLobby = lobby;
                 syncCurrentPlayerReadyFromLobby();
                 refreshUi();
-                if (lobby.isStarted()) {
-                    navigateToMatchIfNeeded(lobby);
-                }
             }
 
             @Override
@@ -545,7 +488,7 @@ public class ReadyCheckFragment extends Fragment {
     }
 
     private void showStatus(@NonNull String message) {
-        if (getView() == null || statusTextView == null) {
+        if (!isAdded()) {
             return;
         }
         statusTextView.setText("Status: " + message);
@@ -556,26 +499,5 @@ public class ReadyCheckFragment extends Fragment {
             return;
         }
         Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
-    }
-
-    private void navigateToMatchIfNeeded(@NonNull Lobby lobby) {
-        if (hasNavigatedToMatch || currentPlayerId == null || currentPlayerId.trim().isEmpty()) {
-            return;
-        }
-        if (!isAdded()) {
-            return;
-        }
-        if (!(requireActivity() instanceof MainActivity)) {
-            return;
-        }
-
-        AppNavigator navigator = ((MainActivity) requireActivity()).getAppNavigator();
-        if (navigator == null) {
-            return;
-        }
-
-        hasNavigatedToMatch = true;
-        GameState gameState = createGameStateFromLobby(lobby);
-        navigator.showMatch(lobby, gameState, currentPlayerId, true);
     }
 }

@@ -82,15 +82,15 @@ public class AppNavigator {
 
     /**
      * Navigates to the active match screen.
+     *
+     * Note: MatchFragment currently manages its own placeholder state when no game state
+     * is provided. Once MatchFragment exposes setter methods for injected state, this
+     * method can pass GameState/currentPlayerId directly.
      */
-    public void showMatch(@Nullable Lobby lobby,
-                          @Nullable GameState gameState,
+    public void showMatch(@Nullable GameState gameState,
                           @Nullable String currentPlayerId,
                           boolean addToBackStack) {
         MatchFragment fragment = new MatchFragment();
-        if (lobby != null || gameState != null || currentPlayerId != null) {
-            fragment.setInitialData(lobby, gameState, currentPlayerId);
-        }
         replaceFragment(fragment, Routes.MATCH, addToBackStack);
     }
 

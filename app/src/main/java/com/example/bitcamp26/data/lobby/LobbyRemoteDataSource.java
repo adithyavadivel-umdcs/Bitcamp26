@@ -262,6 +262,79 @@ public class LobbyRemoteDataSource {
     }
 
     /**
+     * Updates a single player's location fields without replacing the entire lobby snapshot.
+     */
+    public void updatePlayerLocation(@NonNull String lobbyCode,
+                                     @NonNull String playerId,
+                                     double latitude,
+                                     double longitude,
+                                     long lastLocationUpdatedAt,
+                                     @NonNull final LobbyWriteCallback callback) {
+        android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+        boolean[] completed = {false};
+
+        Runnable timeoutRunnable = () -> {
+            if (!completed[0]) {
+                completed[0] = true;
+                callback.onError("Connection timed out. Check your network and try again.");
+            }
+        };
+        handler.postDelayed(timeoutRunnable, WRITE_TIMEOUT_MS);
+
+        lobbiesRef.child(lobbyCode).runTransaction(new Transaction.Handler() {
+            @NonNull
+            @Override
+            public Transaction.Result doTransaction(@NonNull MutableData currentData) {
+                MutableData playersData = currentData.child("players");
+                boolean foundPlayer = false;
+
+                for (MutableData playerData : playersData.getChildren()) {
+                    String snapshotPlayerId = playerData.child("id").getValue(String.class);
+                    if (playerId.equals(snapshotPlayerId)) {
+                        playerData.child("latitude").setValue(latitude);
+                        playerData.child("longitude").setValue(longitude);
+                        playerData.child("lastLocationUpdatedAt").setValue(lastLocationUpdatedAt);
+                        foundPlayer = true;
+                        break;
+                    }
+                }
+
+                if (!foundPlayer) {
+                    return Transaction.abort();
+                }
+
+                return Transaction.success(currentData);
+            }
+
+            @Override
+            public void onComplete(@Nullable DatabaseError error,
+                                   boolean committed,
+                                   @Nullable DataSnapshot currentData) {
+                if (completed[0]) {
+                    return;
+                }
+
+                completed[0] = true;
+                handler.removeCallbacks(timeoutRunnable);
+
+                if (error != null) {
+                    callback.onError(error.getMessage() != null
+                            ? error.getMessage()
+                            : "Failed to update player location.");
+                    return;
+                }
+
+                if (!committed) {
+                    callback.onError("Current player was not found in the lobby.");
+                    return;
+                }
+
+                callback.onSuccess();
+            }
+        });
+    }
+
+    /**
      * Deletes a lobby at /lobbies/{lobbyCode}.
      */
     public void deleteLobby(@NonNull String lobbyCode,

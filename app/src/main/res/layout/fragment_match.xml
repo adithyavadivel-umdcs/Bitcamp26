@@ -10,7 +10,6 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- Shrink / match-state banner -->
         <com.example.bitcamp26.feature.match.components.ShrinkBannerView
             android:id="@+id/shrinkBannerView"
             android:layout_width="match_parent"
@@ -33,9 +32,8 @@
             android:text="Game Finished: No"
             android:textSize="15sp" />
 
-        <!-- Map placeholder with hotspot overlay -->
-        <com.example.bitcamp26.feature.match.components.MapViewContainer
-            android:id="@+id/mapViewContainer"
+        <FrameLayout
+            android:id="@+id/mapContainer"
             android:layout_width="match_parent"
             android:layout_height="260dp"
             android:layout_marginBottom="12dp" />
@@ -48,128 +46,79 @@
             android:text="Current Player: None selected"
             android:textSize="15sp" />
 
-        <!-- Current player ID input -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="4dp"
-            android:text="Current Player ID"
-            android:textSize="14sp" />
-
         <EditText
             android:id="@+id/editCurrentPlayerId"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
-            android:hint="Enter current player ID"
-            android:inputType="text" />
-
-        <!-- Manual location section -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="6dp"
-            android:text="Manual Location Submission"
-            android:textSize="17sp" />
+            android:hint="Player ID" />
 
         <EditText
             android:id="@+id/editLatitude"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:hint="Latitude (e.g. 38.9869)"
-            android:inputType="numberDecimal|numberSigned" />
+            android:visibility="gone" />
 
         <EditText
             android:id="@+id/editLongitude"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:hint="Longitude (e.g. -76.9426)"
-            android:inputType="numberDecimal|numberSigned" />
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/buttonSubmitLocation"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:text="Submit Location" />
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/buttonClaimHotspot"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:text="Claim Nearby Hotspot" />
-
-        <!-- Catch code section -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="6dp"
-            android:text="Catch Code Submission"
-            android:textSize="17sp" />
+            android:text="Claim Hotspot" />
 
         <EditText
             android:id="@+id/editCatchTargetPlayerId"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:hint="Target player ID"
-            android:inputType="text" />
+            android:hint="Target ID" />
 
         <EditText
             android:id="@+id/editCatchCode"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:hint="Target catch code"
-            android:inputType="text" />
+            android:hint="Code" />
 
         <Button
             android:id="@+id/buttonSubmitCatchCode"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:text="Submit Catch Code" />
-
-        <!-- Powerups section -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="6dp"
-            android:text="Powerups"
-            android:textSize="17sp" />
+            android:text="Catch Player" />
 
         <Button
             android:id="@+id/buttonUseHiderPowerup"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:text="Use Hider Invisibility" />
+            android:text="Hider Powerup" />
 
         <Button
             android:id="@+id/buttonUseSeekerPowerup"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:text="Use Seeker Reveal All" />
+            android:text="Seeker Powerup" />
 
         <ProgressBar
             android:id="@+id/progressMatch"
             style="?android:attr/progressBarStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="12dp"
+            android:layout_gravity="center"
             android:visibility="gone" />
 
         <TextView
             android:id="@+id/textMatchStatus"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Status: Ready"
-            android:textSize="15sp" />
+            android:layout_height="wrap_content" />
 
     </LinearLayout>
 </ScrollView>

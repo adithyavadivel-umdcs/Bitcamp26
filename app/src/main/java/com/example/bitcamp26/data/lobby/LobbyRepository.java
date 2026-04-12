@@ -118,6 +118,35 @@ public class LobbyRepository {
     }
 
     /**
+     * Updates only one player's location without replacing the full lobby snapshot.
+     */
+    public void updatePlayerLocation(@NonNull String lobbyCode,
+                                     @NonNull String playerId,
+                                     double latitude,
+                                     double longitude,
+                                     long lastLocationUpdatedAt,
+                                     @NonNull final SimpleCallback callback) {
+        remoteDataSource.updatePlayerLocation(
+                lobbyCode,
+                playerId,
+                latitude,
+                longitude,
+                lastLocationUpdatedAt,
+                new LobbyRemoteDataSource.LobbyWriteCallback() {
+                    @Override
+                    public void onSuccess() {
+                        callback.onSuccess();
+                    }
+
+                    @Override
+                    public void onError(@NonNull String errorMessage) {
+                        callback.onError(errorMessage);
+                    }
+                }
+        );
+    }
+
+    /**
      * Deletes a lobby.
      */
     public void deleteLobby(@NonNull String lobbyCode,
