@@ -135,10 +135,9 @@ public class MapManager implements OnMapReadyCallback {
             selfMarker.setTitle(title);
         }
 
-        if (!hasCenteredOnUser) {
-            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM));
-            hasCenteredOnUser = true;
-        }
+        // Lock camera to player position and maintain default zoom level on every update
+        googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM));
+        hasCenteredOnUser = true;
     }
 
     /**
