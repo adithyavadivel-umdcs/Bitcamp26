@@ -2,7 +2,9 @@ package com.example.bitcamp26.data.lobby;
 
 import androidx.annotation.NonNull;
 
+import com.example.bitcamp26.core.util.FirebaseBackendConfig;
 import com.google.firebase.functions.FirebaseFunctions;
+import com.google.firebase.functions.FirebaseFunctionsException;
 import com.google.firebase.functions.HttpsCallableResult;
 
 import java.util.HashMap;
@@ -33,7 +35,7 @@ public class FunctionsRemoteDataSource {
     private final FirebaseFunctions functions;
 
     public FunctionsRemoteDataSource() {
-        this(FirebaseFunctions.getInstance());
+        this(FirebaseFunctions.getInstance(FirebaseBackendConfig.FUNCTIONS_REGION));
     }
 
     public FunctionsRemoteDataSource(@NonNull FirebaseFunctions functions) {
@@ -167,6 +169,39 @@ public class FunctionsRemoteDataSource {
                         callback.onSuccess(new HashMap<>());
                     }
                 })
-                .addOnFailureListener(callback::onError);
+                .addOnFailureListener(error -> callback.onError(normalizeError(error)));
+    }
+
+    @NonNull
+    private Exception normalizeError(@NonNull Exception error) {
+        if (!(error instanceof FirebaseFunctionsException)) {
+            return error;
+        }
+
+        FirebaseFunctionsException functionsError = (FirebaseFunctionsException) error;
+        FirebaseFunctionsException.Code code = functionsError.getCode();
+        String message;
+
+        switch (code) {
+            case NOT_FOUND:
+                message = "Cloud Function endpoint was not found. Deploy the latest Firebase "
+                        + "Functions for project " + FirebaseBackendConfig.PROJECT_ID + ".";
+                break;
+            case UNAUTHENTICATED:
+                message = "You must be signed in to call the lobby backend.";
+                break;
+            case INVALID_ARGUMENT:
+                message = functionsError.getMessage() != null
+                        ? functionsError.getMessage()
+                        : "The lobby request was missing required data.";
+                break;
+            default:
+                message = functionsError.getMessage() != null
+                        ? functionsError.getMessage()
+                        : "The lobby backend request failed.";
+                break;
+        }
+
+        return new Exception(message, error);
     }
 }

@@ -4,6 +4,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.example.bitcamp26.core.model.Lobby;
+import com.example.bitcamp26.core.util.FirebaseBackendConfig;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
@@ -21,7 +22,9 @@ public class LobbyRemoteDataSource {
     private final DatabaseReference lobbiesRef;
 
     public LobbyRemoteDataSource() {
-        this(FirebaseDatabase.getInstance().getReference().child(LOBBIES_NODE));
+        this(FirebaseDatabase.getInstance(FirebaseBackendConfig.REALTIME_DATABASE_URL)
+                .getReference()
+                .child(LOBBIES_NODE));
     }
 
     public LobbyRemoteDataSource(@NonNull DatabaseReference lobbiesRef) {
