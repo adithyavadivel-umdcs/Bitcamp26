@@ -11,7 +11,7 @@
 - Multiple hiders
 
 ## Start condition
-- All players must be within the start radius of the host-selected start point.
+- All players must be within the start radius of the host-selected start area.
 - Host starts the game only when all players are marked ready and in range.
 
 ## Head start
@@ -25,9 +25,11 @@
   - center latitude
   - center longitude
   - current half-width
-- The square shrinks every shrinkIntervalSeconds.
+- The square shrinks every 120 seconds.
+- Each shrink subtracts 10 percent of the original half-width from both map dimensions while staying centered on the same map center.
 - Players are warned shrinkWarningSeconds before each shrink.
 - After a shrink, players outside the new square bounds are eliminated after the grace evaluation window resolves.
+- When the square reaches 20 percent of its original half-width and at least one hider is still alive, hiders win immediately.
 
 ## Elimination on shrink
 - Elimination is server-authoritative.
@@ -36,10 +38,11 @@
 
 ## Visibility
 - Minimap is square and always centered on the local player.
-- Hiders see seeker location only when seeker is within seekerVisibilityRadiusMeters of that hider.
+- Frontend renders from shared RTDB world state and local minimap bounds.
+- Hiders see seeker location only when seeker falls inside that hider's minimap window.
 - Seeker does not see hider locations by default.
-- If seeker uses the reveal-all powerup, seeker temporarily sees all active hiders.
-- If a hider uses invisibility, that hider is hidden from seeker reveal systems during the powerup duration.
+- If seeker minimap boost is active, seeker minimap width and height are both multiplied by 2.0.
+- If a hider uses vision reduction, seeker-specific visibility for that hider is multiplied by 0.6.
 
 ## Catch system
 - Every hider is assigned a unique 6-digit code at match start.
@@ -51,34 +54,40 @@
 
 ## Hotspots
 - There are multiple hotspots on the map.
-- Hotspots are fixed points with a radius and a preset powerup type.
-- Player must be inside hotspot radius to claim.
-- Hotspot claim is tap-to-claim, not dwell-to-capture.
-- Client may show claim availability locally.
-- Server validates claim using latest known position and hotspot state.
-- First valid claim wins.
-- After a successful claim, hotspot becomes inactive.
-- MVP default: hotspot is single-use for the whole game.
+- Hotspots are fixed 15ft by 15ft squares with a preset powerup type.
+- The number of hotspots is the highest integer that keeps total hotspot coverage strictly below 10 percent of total map area.
+- Hotspot placement is randomized by the backend at match start.
+- No two hotspots may intersect.
+- Hotspots are permanently active for the whole match.
+- Multiple players may earn from the same hotspot at the same time.
+- There is no hotspot lock, no queue, and no occupancy cap.
+- Player must remain inside hotspot square bounds continuously for hotspotDwellSeconds to earn that hotspot's powerup.
+- If a player leaves before dwell completes, that player's hotspot progress resets immediately.
+- If a player re-enters after leaving, a new stay starts immediately.
+- After a player earns a hotspot reward, that uninterrupted stay cannot grant another reward.
+- To earn again, the player must leave and re-enter a hotspot.
+- Every player has a personal hotspot cooldown of hotspotPersonalCooldownSeconds after a reward.
+- During personal cooldown, that player cannot earn from any hotspot.
+- Backend evaluates hotspot dwell progress only when that player's location is written to RTDB.
 
 ## MVP powerups
 ### Hider powerup
-- Invisibility
-- Duration: hiderInvisibilityDurationSeconds
-- Effect: seeker cannot see this hider through seeker reveal systems during effect
+- Vision reduction
+- Duration: hiderVisionReductionDurationSeconds
+- Effect: seeker-specific visibility for that hider becomes 0.6x the base amount
 
 ### Seeker powerup
-- Reveal all
-- Duration: seekerRevealAllDurationSeconds
-- Effect: seeker sees all active hider locations during effect
+- Minimap boost
+- Duration: seekerMinimapBoostDurationSeconds
+- Effect: seeker minimap width and height are doubled during effect
 
 ## Post-elimination
 - Eliminated players can no longer influence movement gameplay.
-- Eliminated players are directed to a rally point outside the play area.
-- MVP routing: button opens Google Maps to rally point.
 
 ## Win conditions
 - If seeker is disqualified, all surviving hiders win.
 - If all hiders are eliminated, seeker wins.
+- If the map reaches the 20 percent shrink floor before all hiders are eliminated, surviving hiders win.
 - If time limit exists and expires before all hiders are eliminated, surviving hiders win.
 
 ## Disconnect behavior

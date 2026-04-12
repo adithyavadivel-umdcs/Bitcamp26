@@ -11,7 +11,7 @@ Requirements:
   - do not show other hider markers
 - if current player is the seeker:
   - show self marker
-  - show hiders only when reveal-all is active or when server marks them visible
+  - show hiders only when server marks them visible
 - top overlay for timers:
   - head start timer
   - next shrink timer

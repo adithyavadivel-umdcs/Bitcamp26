@@ -8,7 +8,7 @@ public class HotspotState {
     public boolean active;
     public String claimedBy;   // userId or null
     public Long claimedAt;     // timestamp or null
-    public String powerupType; // "HIDER_INVISIBILITY" | "SEEKER_REVEAL_ALL"
+    public String powerupType; // "HIDER_VISION_REDUCTION" | "SEEKER_MINIMAP_BOOST"
 
     // Getters and Setters
     public String getId() { return id; }

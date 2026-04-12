@@ -98,8 +98,10 @@ public class UsePowerupUseCase {
         }
 
         switch (powerupType) {
+            case HIDER_VISION_REDUCTION:
             case HIDER_INVISIBILITY:
                 return role == PlayerRole.HIDER;
+            case SEEKER_MINIMAP_BOOST:
             case SEEKER_REVEAL_ALL:
                 return role == PlayerRole.SEEKER;
             default:
@@ -116,8 +118,10 @@ public class UsePowerupUseCase {
 
     public long resolveEffectDurationMillis(@NonNull PowerupType powerupType) {
         switch (powerupType) {
+            case HIDER_VISION_REDUCTION:
             case HIDER_INVISIBILITY:
                 return 20_000L;
+            case SEEKER_MINIMAP_BOOST:
             case SEEKER_REVEAL_ALL:
                 return 15_000L;
             default:

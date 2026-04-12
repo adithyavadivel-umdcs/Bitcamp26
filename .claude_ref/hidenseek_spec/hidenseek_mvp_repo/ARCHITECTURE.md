@@ -10,12 +10,13 @@ Client-driven rendering.
 - subscribe to lobby state
 - send periodic location updates every 2 to 3 seconds
 - render a square minimap centered on the local player
-- show seeker and allowed markers on map
+- use shared RTDB coordinates plus local minimap bounds to decide what to render
+- if seeker has the seeker minimap boost active, double minimap width and height
+- if a hider has hider vision reduction active, apply a 0.6x seeker-specific visibility window for that hider
 - show shrink warnings
-- show hotspot claim buttons when locally in range
+- show hotspot dwell progress from locally observed hotspot and player state
 - allow seeker code submission UI
 - show step count and level
-- open Google Maps for rally point
 
 ## Server responsibilities
 - create and validate lobby state
@@ -26,8 +27,7 @@ Client-driven rendering.
 - enforce seeker freeze
 - compute shrink events
 - resolve out-of-bounds elimination against square bounds
-- determine whether seeker is visible to each hider based on visibility radius
-- validate hotspot claims
+- evaluate hotspot dwell progress on per-player location writes
 - validate catch code submissions
 - grant and resolve powerups
 - compute winner
@@ -35,3 +35,4 @@ Client-driven rendering.
 ## Key idea
 Client sends facts and intents.
 Server decides outcomes.
+Client decides minimap rendering.

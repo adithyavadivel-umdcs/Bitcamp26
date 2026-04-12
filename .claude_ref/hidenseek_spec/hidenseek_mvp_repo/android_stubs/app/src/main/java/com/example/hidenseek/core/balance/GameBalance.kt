@@ -26,8 +26,10 @@ object GameBalance {
         val shrinkGraceSeconds: Int,
         val seekerFreezeViolationSeconds: Int,
         val disconnectTimeoutSeconds: Int,
-        val hiderInvisibilityDurationSeconds: Int,
-        val seekerRevealAllDurationSeconds: Int,
+        val hiderVisionReductionDurationSeconds: Int,
+        val seekerMinimapBoostDurationSeconds: Int,
+        val hiderVisionReductionMultiplier: Double,
+        val seekerMinimapBoostMultiplier: Double,
         val hotspotCount: Int,
         val shrinkStepMeters: Double,
         val minimumPlayableRadiusMeters: Double,
@@ -43,8 +45,8 @@ object GameBalance {
 
         val headStartSeconds = clamp(20.0 * scale, 15.0, 60.0).roundToInt()
         val shrinkIntervalSeconds = clamp(60.0 * scale, 45.0, 120.0).roundToInt()
-        val hiderInvisibilityDurationSeconds = clamp(12.0 * scale, 8.0, 25.0).roundToInt()
-        val seekerRevealAllDurationSeconds = clamp(8.0 * scale, 6.0, 20.0).roundToInt()
+        val hiderVisionReductionDurationSeconds = clamp(12.0 * scale, 8.0, 25.0).roundToInt()
+        val seekerMinimapBoostDurationSeconds = clamp(8.0 * scale, 6.0, 20.0).roundToInt()
 
         val hotspotCount = clampInt((mapRadiusMeters / 40.0).roundToInt(), 3, 8)
         val shrinkStepMeters = max(mapRadiusMeters * 0.15, 10.0)
@@ -62,8 +64,10 @@ object GameBalance {
             shrinkGraceSeconds = 3,
             seekerFreezeViolationSeconds = 2,
             disconnectTimeoutSeconds = 20,
-            hiderInvisibilityDurationSeconds = hiderInvisibilityDurationSeconds,
-            seekerRevealAllDurationSeconds = seekerRevealAllDurationSeconds,
+            hiderVisionReductionDurationSeconds = hiderVisionReductionDurationSeconds,
+            seekerMinimapBoostDurationSeconds = seekerMinimapBoostDurationSeconds,
+            hiderVisionReductionMultiplier = 0.6,
+            seekerMinimapBoostMultiplier = 2.0,
             hotspotCount = hotspotCount,
             shrinkStepMeters = shrinkStepMeters,
             minimumPlayableRadiusMeters = minimumPlayableRadiusMeters,
