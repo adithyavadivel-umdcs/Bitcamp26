@@ -15,7 +15,7 @@ import com.example.bitcamp26.navigation.AppNavigator;
 public class MainActivity extends AppCompatActivity {
 
     private AppNavigator appNavigator;
-
+//s
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
