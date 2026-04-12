@@ -97,6 +97,7 @@ public class ReadyCheckFragment extends Fragment {
      */
     public void setLobby(@Nullable Lobby lobby) {
         this.currentLobby = lobby;
+        syncCurrentPlayerReadyFromLobby();
         refreshUi();
     }
 
@@ -163,7 +164,7 @@ public class ReadyCheckFragment extends Fragment {
         currentPlayerReady = true;
         showStatus("All players marked ready for demo purposes.");
         refreshUi();
-        updateLobbyReady();
+        updateAllPlayersReady();
     }
 
     private void startMatchIfPossible() {
@@ -446,12 +447,33 @@ public class ReadyCheckFragment extends Fragment {
     }
 
     private void updateLobbyReady() {
+        if (currentLobby == null || currentLobby.getCode() == null || currentPlayerId == null) {
+            return;
+        }
+        lobbyRepository.updatePlayerReady(currentLobby.getCode(), currentPlayerId, currentPlayerReady,
+                new LobbyRepository.SimpleCallback() {
+            @Override
+            public void onSuccess() {
+                // No-op: the active observer will receive the updated state
+            }
+
+            @Override
+            public void onError(@NonNull String message) {
+                if (!isAdded()) {
+                    return;
+                }
+                showStatus("Failed to sync ready state: " + message);
+            }
+        });
+    }
+
+    private void updateAllPlayersReady() {
         if (currentLobby == null || currentLobby.getCode() == null) {
             return;
         }
-        lobbyRepository.updateLobby(currentLobby.getCode(), currentLobby, new LobbyRepository.LobbyCallback() {
+        lobbyRepository.updateAllPlayersReady(currentLobby.getCode(), true, new LobbyRepository.SimpleCallback() {
             @Override
-            public void onSuccess(@NonNull Lobby lobby) {
+            public void onSuccess() {
                 // No-op: the active observer will receive the updated state
             }
 

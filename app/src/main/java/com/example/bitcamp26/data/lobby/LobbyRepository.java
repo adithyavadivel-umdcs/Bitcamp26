@@ -79,6 +79,45 @@ public class LobbyRepository {
     }
 
     /**
+     * Updates only one player's ready flag without overwriting the full lobby.
+     */
+    public void updatePlayerReady(@NonNull String lobbyCode,
+                                  @NonNull String playerId,
+                                  boolean ready,
+                                  @NonNull final SimpleCallback callback) {
+        remoteDataSource.updatePlayerReady(lobbyCode, playerId, ready, new LobbyRemoteDataSource.LobbyWriteCallback() {
+            @Override
+            public void onSuccess() {
+                callback.onSuccess();
+            }
+
+            @Override
+            public void onError(@NonNull String errorMessage) {
+                callback.onError(errorMessage);
+            }
+        });
+    }
+
+    /**
+     * Updates every player's ready flag without replacing the full lobby snapshot.
+     */
+    public void updateAllPlayersReady(@NonNull String lobbyCode,
+                                      boolean ready,
+                                      @NonNull final SimpleCallback callback) {
+        remoteDataSource.updateAllPlayersReady(lobbyCode, ready, new LobbyRemoteDataSource.LobbyWriteCallback() {
+            @Override
+            public void onSuccess() {
+                callback.onSuccess();
+            }
+
+            @Override
+            public void onError(@NonNull String errorMessage) {
+                callback.onError(errorMessage);
+            }
+        });
+    }
+
+    /**
      * Deletes a lobby.
      */
     public void deleteLobby(@NonNull String lobbyCode,

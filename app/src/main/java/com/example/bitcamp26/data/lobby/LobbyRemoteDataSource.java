@@ -11,6 +11,8 @@ import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.MutableData;
+import com.google.firebase.database.Transaction;
 import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
@@ -124,6 +126,139 @@ public class LobbyRemoteDataSource {
                         callback.onError(getMessageOrDefault(e, "Failed to update lobby."));
                     }
                 });
+    }
+
+    /**
+     * Updates only one player's ready field to avoid overwriting newer lobby changes from others.
+     */
+    public void updatePlayerReady(@NonNull String lobbyCode,
+                                  @NonNull String playerId,
+                                  boolean ready,
+                                  @NonNull final LobbyWriteCallback callback) {
+        android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+        boolean[] completed = {false};
+
+        Runnable timeoutRunnable = () -> {
+            if (!completed[0]) {
+                completed[0] = true;
+                callback.onError("Connection timed out. Check your network and try again.");
+            }
+        };
+        handler.postDelayed(timeoutRunnable, WRITE_TIMEOUT_MS);
+
+        lobbiesRef.child(lobbyCode).runTransaction(new Transaction.Handler() {
+            @NonNull
+            @Override
+            public Transaction.Result doTransaction(@NonNull MutableData currentData) {
+                MutableData playersData = currentData.child("players");
+                boolean foundPlayer = false;
+
+                for (MutableData playerData : playersData.getChildren()) {
+                    String snapshotPlayerId = playerData.child("id").getValue(String.class);
+                    if (playerId.equals(snapshotPlayerId)) {
+                        playerData.child("ready").setValue(ready);
+                        foundPlayer = true;
+                        break;
+                    }
+                }
+
+                if (!foundPlayer) {
+                    return Transaction.abort();
+                }
+
+                return Transaction.success(currentData);
+            }
+
+            @Override
+            public void onComplete(@Nullable DatabaseError error,
+                                   boolean committed,
+                                   @Nullable DataSnapshot currentData) {
+                if (completed[0]) {
+                    return;
+                }
+
+                completed[0] = true;
+                handler.removeCallbacks(timeoutRunnable);
+
+                if (error != null) {
+                    callback.onError(error.getMessage() != null
+                            ? error.getMessage()
+                            : "Failed to update player readiness.");
+                    return;
+                }
+
+                if (!committed) {
+                    callback.onError("Current player was not found in the lobby.");
+                    return;
+                }
+
+                callback.onSuccess();
+            }
+        });
+    }
+
+    /**
+     * Updates every player's ready flag in one transaction for demo or bulk-ready flows.
+     */
+    public void updateAllPlayersReady(@NonNull String lobbyCode,
+                                      boolean ready,
+                                      @NonNull final LobbyWriteCallback callback) {
+        android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+        boolean[] completed = {false};
+
+        Runnable timeoutRunnable = () -> {
+            if (!completed[0]) {
+                completed[0] = true;
+                callback.onError("Connection timed out. Check your network and try again.");
+            }
+        };
+        handler.postDelayed(timeoutRunnable, WRITE_TIMEOUT_MS);
+
+        lobbiesRef.child(lobbyCode).runTransaction(new Transaction.Handler() {
+            @NonNull
+            @Override
+            public Transaction.Result doTransaction(@NonNull MutableData currentData) {
+                MutableData playersData = currentData.child("players");
+                boolean foundPlayer = false;
+
+                for (MutableData playerData : playersData.getChildren()) {
+                    playerData.child("ready").setValue(ready);
+                    foundPlayer = true;
+                }
+
+                if (!foundPlayer) {
+                    return Transaction.abort();
+                }
+
+                return Transaction.success(currentData);
+            }
+
+            @Override
+            public void onComplete(@Nullable DatabaseError error,
+                                   boolean committed,
+                                   @Nullable DataSnapshot currentData) {
+                if (completed[0]) {
+                    return;
+                }
+
+                completed[0] = true;
+                handler.removeCallbacks(timeoutRunnable);
+
+                if (error != null) {
+                    callback.onError(error.getMessage() != null
+                            ? error.getMessage()
+                            : "Failed to update ready states.");
+                    return;
+                }
+
+                if (!committed) {
+                    callback.onError("No players were found in the lobby.");
+                    return;
+                }
+
+                callback.onSuccess();
+            }
+        });
     }
 
     /**
