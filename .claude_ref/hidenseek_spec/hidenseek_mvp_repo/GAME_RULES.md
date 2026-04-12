@@ -21,23 +21,25 @@
 - Hiders can move immediately.
 
 ## Map boundary
-- Play area is one circle with:
+- Play area is one square with:
   - center latitude
   - center longitude
-  - current radius
-- The circle shrinks every shrinkIntervalSeconds.
+  - current half-width
+- The square shrinks every shrinkIntervalSeconds.
 - Players are warned shrinkWarningSeconds before each shrink.
-- After a shrink, players outside the new radius are eliminated after the grace evaluation window resolves.
+- After a shrink, players outside the new square bounds are eliminated after the grace evaluation window resolves.
 
 ## Elimination on shrink
 - Elimination is server-authoritative.
 - Use a short grace window after shrink.
-- A player is eliminated only if their recent location samples remain outside the new radius through the grace evaluation logic.
+- A player is eliminated only if their recent location samples remain outside the new square bounds through the grace evaluation logic.
 
 ## Visibility
-- Hiders always see seeker location on map.
+- Minimap is square and always centered on the local player.
+- Hiders see seeker location only when seeker is within seekerVisibilityRadiusMeters of that hider.
 - Seeker does not see hider locations by default.
 - If seeker uses the reveal-all powerup, seeker temporarily sees all active hiders.
+- If a hider uses invisibility, that hider is hidden from seeker reveal systems during the powerup duration.
 
 ## Catch system
 - Every hider is assigned a unique 6-digit code at match start.

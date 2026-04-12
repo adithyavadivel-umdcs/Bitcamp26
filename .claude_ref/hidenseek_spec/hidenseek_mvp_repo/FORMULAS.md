@@ -1,9 +1,9 @@
 # Game Balance Formulas
 
-All formulas are derived from mapRadiusMeters.
+All formulas are derived from mapHalfWidthMeters.
 
 ## Base scale
-scale = mapRadiusMeters / 100.0
+scale = mapHalfWidthMeters / 100.0
 
 ## Clamp helper
 clamp(value, min, max)
@@ -28,9 +28,12 @@ seekerRevealAllDurationSeconds = clamp(8.0 * scale, 6.0, 20.0)
 hotspotCount = clampInt(round(mapRadiusMeters / 40.0), 3, 8)
 
 ## Shrink formula
-initialRadiusMeters = mapRadiusMeters
-shrinkStepMeters = max(initialRadiusMeters * 0.15, 10.0)
-minimumPlayableRadiusMeters = clamp(initialRadiusMeters * 0.25, 40.0, 120.0)
+initialHalfWidthMeters = mapHalfWidthMeters
+shrinkStepMeters = max(initialHalfWidthMeters * 0.15, 10.0)
+minimumPlayableHalfWidthMeters = clamp(initialHalfWidthMeters * 0.25, 40.0, 120.0)
+
+## Visibility formulas
+seekerVisibilityRadiusMeters = clamp(35.0 * scale, 25.0, 100.0)
 
 ## Level formula
 level = floor(totalSteps / 2000) + 1

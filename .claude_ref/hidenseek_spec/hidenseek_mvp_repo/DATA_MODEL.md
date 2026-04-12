@@ -13,8 +13,8 @@ lobbies/{lobbyId}
   createdAt: number
   mapCenterLat: number
   mapCenterLng: number
-  initialRadiusMeters: number
-  currentRadiusMeters: number
+  initialHalfWidthMeters: number
+  currentHalfWidthMeters: number
   rallyPointLat: number
   rallyPointLng: number
   seekerId: string
@@ -24,6 +24,7 @@ lobbies/{lobbyId}
     shrinkWarningSeconds: number
     catchEligibilityRadiusMeters: number
     seekerFreezeRadiusMeters: number
+    seekerVisibilityRadiusMeters: number
     hiderInvisibilityDurationSeconds: number
     seekerRevealAllDurationSeconds: number
     startClusterRadiusMeters: number
@@ -51,6 +52,7 @@ lobbies/{lobbyId}/players/{userId}
   powerupEndsAt: number | null
   catchCode: string | null
   catchEligible: boolean
+  seekerVisibleToHider: boolean
 
 lobbies/{lobbyId}/hotspots/{hotspotId}
   id: string

@@ -16,8 +16,15 @@ import {
   shrinkStepMeters,
 } from "./gameBalance";
 
-admin.initializeApp();
-const db = admin.database();
+if (!admin.apps.length) {
+  admin.initializeApp({
+    databaseURL:
+      process.env.FIREBASE_DATABASE_URL ||
+      "https://bitcamp26-default-rtdb.firebaseio.com",
+  });
+}
+
+const getDb = () => admin.database();
 
 type LobbyState = "WAITING" | "RUNNING" | "ENDED";
 type PlayerRole = "SEEKER" | "HIDER";
@@ -432,7 +439,7 @@ async function checkAndWriteWin(
 ): Promise<boolean> {
   const winner = resolveWinner(players);
   if (!winner) return false;
-  await db.ref(`lobbies/${lobbyId}`).update({
+  await getDb().ref(`lobbies/${lobbyId}`).update({
     state: "ENDED",
     "results/winner": winner,
     "results/endedAt": Date.now(),
@@ -464,7 +471,7 @@ export const createLobby = functions.https.onCall(async (data, context) => {
 
   let inviteCode = generateCode();
   for (let attempt = 0; attempt < 5; attempt++) {
-    const existing = await db.ref(`lobbies/${inviteCode}`).once("value");
+    const existing = await getDb().ref(`lobbies/${inviteCode}`).once("value");
     if (!existing.exists()) break;
     inviteCode = generateCode();
   }
@@ -479,8 +486,8 @@ export const createLobby = functions.https.onCall(async (data, context) => {
   );
   lobby.inviteCode = inviteCode;
 
-  await db.ref(`lobbies/${inviteCode}`).set(lobby);
-  await db.ref(`lobbies/${inviteCode}/players/${uid}`).set(hostPlayer);
+  await getDb().ref(`lobbies/${inviteCode}`).set(lobby);
+  await getDb().ref(`lobbies/${inviteCode}/players/${uid}`).set(hostPlayer);
   return { lobbyId: inviteCode, inviteCode };
 });
 
@@ -499,7 +506,7 @@ export const joinLobby = functions.https.onCall(async (data, context) => {
   }
 
   const normalizedCode = inviteCode.trim().toUpperCase();
-  const lobbySnap = await db.ref(`lobbies/${normalizedCode}`).once("value");
+  const lobbySnap = await getDb().ref(`lobbies/${normalizedCode}`).once("value");
   if (!lobbySnap.exists()) {
     throw new functions.https.HttpsError("not-found", "Lobby not found");
   }
@@ -511,7 +518,7 @@ export const joinLobby = functions.https.onCall(async (data, context) => {
     );
   }
 
-  const playerRef = db.ref(`lobbies/${normalizedCode}/players/${uid}`);
+  const playerRef = getDb().ref(`lobbies/${normalizedCode}/players/${uid}`);
   const existingSnap = await playerRef.once("value");
   if (existingSnap.exists()) {
     await playerRef.update({ displayName, connected: true });
@@ -535,7 +542,7 @@ export const startGame = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("invalid-argument", "lobbyId required");
   }
 
-  const lobbySnap = await db.ref(`lobbies/${lobbyId}`).once("value");
+  const lobbySnap = await getDb().ref(`lobbies/${lobbyId}`).once("value");
   if (!lobbySnap.exists()) {
     throw new functions.https.HttpsError("not-found", "Lobby not found");
   }
@@ -550,13 +557,13 @@ export const startGame = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("failed-precondition", "Game has already started");
   }
 
-  const playersSnap = await db.ref(`lobbies/${lobbyId}/players`).once("value");
+  const playersSnap = await getDb().ref(`lobbies/${lobbyId}/players`).once("value");
   const players = (playersSnap.val() ?? {}) as Record<string, LobbyPlayer>;
   const plan = prepareStartGame(lobby, players, Date.now());
 
-  await db.ref(`lobbies/${lobbyId}/players`).update(plan.playerUpdates);
-  await db.ref(`lobbies/${lobbyId}/hotspots`).set(plan.hotspots);
-  await db.ref(`lobbies/${lobbyId}`).update({
+  await getDb().ref(`lobbies/${lobbyId}/players`).update(plan.playerUpdates);
+  await getDb().ref(`lobbies/${lobbyId}/hotspots`).set(plan.hotspots);
+  await getDb().ref(`lobbies/${lobbyId}`).update({
     state: "RUNNING",
     currentRadiusMeters: lobby.currentRadiusMeters || lobby.initialRadiusMeters,
     "timing/gameStartAt": plan.gameStartAt,
@@ -577,7 +584,7 @@ export const submitCatchCode = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("invalid-argument", "lobbyId and code required");
   }
 
-  const lobbySnap = await db.ref(`lobbies/${lobbyId}`).once("value");
+  const lobbySnap = await getDb().ref(`lobbies/${lobbyId}`).once("value");
   const lobby = lobbySnap.val() as Lobby | null;
   if (!lobby) {
     throw new functions.https.HttpsError("not-found", "Lobby not found");
@@ -594,7 +601,7 @@ export const submitCatchCode = functions.https.onCall(async (data, context) => {
     );
   }
 
-  const playersSnap = await db.ref(`lobbies/${lobbyId}/players`).once("value");
+  const playersSnap = await getDb().ref(`lobbies/${lobbyId}/players`).once("value");
   const players = (playersSnap.val() ?? {}) as Record<string, LobbyPlayer>;
   const seeker = players[uid];
   if (!seeker || seeker.role !== "SEEKER" || !seeker.alive) {
@@ -609,7 +616,7 @@ export const submitCatchCode = functions.https.onCall(async (data, context) => {
     return catchResult;
   }
 
-  await db.ref(`lobbies/${lobbyId}/players/${catchResult.targetId}`).update({
+  await getDb().ref(`lobbies/${lobbyId}/players/${catchResult.targetId}`).update({
     alive: false,
     catchEligible: false,
     eliminatedAt: now,
@@ -639,7 +646,7 @@ export const shrinkCircle = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("invalid-argument", "lobbyId required");
   }
 
-  const lobbySnap = await db.ref(`lobbies/${lobbyId}`).once("value");
+  const lobbySnap = await getDb().ref(`lobbies/${lobbyId}`).once("value");
   const lobby = lobbySnap.val() as Lobby | null;
   if (!lobby) {
     throw new functions.https.HttpsError("not-found", "Lobby not found");
@@ -654,7 +661,7 @@ export const shrinkCircle = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("failed-precondition", "Shrink is not due yet");
   }
 
-  const playersSnap = await db.ref(`lobbies/${lobbyId}/players`).once("value");
+  const playersSnap = await getDb().ref(`lobbies/${lobbyId}/players`).once("value");
   const players = (playersSnap.val() ?? {}) as Record<string, LobbyPlayer>;
   const now = Date.now();
   const newRadius = computeShrinkRadius(
@@ -671,7 +678,7 @@ export const shrinkCircle = functions.https.onCall(async (data, context) => {
     now
   );
 
-  await db.ref(`lobbies/${lobbyId}`).update({
+  await getDb().ref(`lobbies/${lobbyId}`).update({
     currentRadiusMeters: newRadius,
     "timing/nextShrinkAt": now + shrinkIntervalSeconds(lobby.initialRadiusMeters) * 1000,
   });
@@ -683,7 +690,7 @@ export const shrinkCircle = functions.https.onCall(async (data, context) => {
       eliminationUpdates[`${playerId}/catchEligible`] = false;
       eliminationUpdates[`${playerId}/eliminatedAt`] = now;
     }
-    await db.ref(`lobbies/${lobbyId}/players`).update(eliminationUpdates);
+    await getDb().ref(`lobbies/${lobbyId}/players`).update(eliminationUpdates);
   }
 
   const updatedPlayers = { ...players };
@@ -710,7 +717,7 @@ export const claimHotspot = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("invalid-argument", "lobbyId and hotspotId required");
   }
 
-  const lobbySnap = await db.ref(`lobbies/${lobbyId}`).once("value");
+  const lobbySnap = await getDb().ref(`lobbies/${lobbyId}`).once("value");
   const lobby = lobbySnap.val() as Lobby | null;
   if (!lobby) {
     throw new functions.https.HttpsError("not-found", "Lobby not found");
@@ -719,13 +726,13 @@ export const claimHotspot = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("failed-precondition", "Game is not running");
   }
 
-  const playerSnap = await db.ref(`lobbies/${lobbyId}/players/${uid}`).once("value");
+  const playerSnap = await getDb().ref(`lobbies/${lobbyId}/players/${uid}`).once("value");
   const player = playerSnap.val() as LobbyPlayer | null;
   if (!player || !player.alive) {
     throw new functions.https.HttpsError("failed-precondition", "Player not active");
   }
 
-  const hotspotRef = db.ref(`lobbies/${lobbyId}/hotspots/${hotspotId}`);
+  const hotspotRef = getDb().ref(`lobbies/${lobbyId}/hotspots/${hotspotId}`);
   const transaction = await hotspotRef.transaction((current: Hotspot | null) => {
     if (!current) return current;
     try {
@@ -744,7 +751,7 @@ export const claimHotspot = functions.https.onCall(async (data, context) => {
   }
 
   const claimed = transaction.snapshot.val() as Hotspot;
-  await db.ref(`lobbies/${lobbyId}/players/${uid}`).update({
+  await getDb().ref(`lobbies/${lobbyId}/players/${uid}`).update({
     activePowerup: claimed.powerupType ?? "NONE",
     powerupEndsAt: null,
   });
@@ -763,7 +770,7 @@ export const activatePowerup = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("invalid-argument", "lobbyId required");
   }
 
-  const lobbySnap = await db.ref(`lobbies/${lobbyId}`).once("value");
+  const lobbySnap = await getDb().ref(`lobbies/${lobbyId}`).once("value");
   const lobby = lobbySnap.val() as Lobby | null;
   if (!lobby) {
     throw new functions.https.HttpsError("not-found", "Lobby not found");
@@ -772,14 +779,14 @@ export const activatePowerup = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("failed-precondition", "Game is not running");
   }
 
-  const playerSnap = await db.ref(`lobbies/${lobbyId}/players/${uid}`).once("value");
+  const playerSnap = await getDb().ref(`lobbies/${lobbyId}/players/${uid}`).once("value");
   const player = playerSnap.val() as LobbyPlayer | null;
   if (!player || !player.alive) {
     throw new functions.https.HttpsError("failed-precondition", "Player not active");
   }
 
   const result = resolvePowerupActivation(lobby, player, Date.now());
-  await db.ref(`lobbies/${lobbyId}/players/${uid}`).update({
+  await getDb().ref(`lobbies/${lobbyId}/players/${uid}`).update({
     powerupEndsAt: result.powerupEndsAt,
   });
 
@@ -796,19 +803,19 @@ export const refreshCatchEligibility = functions.database
   .onWrite(async (_, context) => {
     const { lobbyId } = context.params;
 
-    const lobbySnap = await db.ref(`lobbies/${lobbyId}`).once("value");
+    const lobbySnap = await getDb().ref(`lobbies/${lobbyId}`).once("value");
     const lobby = lobbySnap.val() as Lobby | null;
     if (!lobby || lobby.state !== "RUNNING") {
       return;
     }
 
-    const playersSnap = await db.ref(`lobbies/${lobbyId}/players`).once("value");
+    const playersSnap = await getDb().ref(`lobbies/${lobbyId}/players`).once("value");
     const players = (playersSnap.val() ?? {}) as Record<string, LobbyPlayer>;
     const now = Date.now();
 
     const expiredUpdates = clearExpiredPowerups(players, now);
     if (Object.keys(expiredUpdates).length > 0) {
-      await db.ref(`lobbies/${lobbyId}/players`).update(expiredUpdates);
+      await getDb().ref(`lobbies/${lobbyId}/players`).update(expiredUpdates);
       for (const [path, value] of Object.entries(expiredUpdates)) {
         const [playerId, field] = path.split("/");
         players[playerId] = { ...players[playerId], [field]: value } as LobbyPlayer;
@@ -836,5 +843,5 @@ export const refreshCatchEligibility = functions.database
       updates[`${playerId}/catchEligible`] = dist <= catchRadius;
     }
 
-    await db.ref(`lobbies/${lobbyId}/players`).update(updates);
+    await getDb().ref(`lobbies/${lobbyId}/players`).update(updates);
   });

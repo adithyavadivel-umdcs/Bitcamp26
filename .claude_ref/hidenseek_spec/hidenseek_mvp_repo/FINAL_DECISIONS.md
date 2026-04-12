@@ -15,6 +15,9 @@
 - Tap-to-claim hotspots
 - First valid claim wins
 - Hotspots are single-use for the whole game
+- Square play area instead of circular bounds
+- Square minimap centered on the local player
+- Hiders only see seeker when seeker is within a visibility radius of that hider
 - Two powerups only
 - Local step counting only
 - Level display only, no cosmetics backend

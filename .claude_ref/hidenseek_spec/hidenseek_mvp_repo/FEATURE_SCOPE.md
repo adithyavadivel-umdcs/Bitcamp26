@@ -10,15 +10,16 @@
 - head start
 - seeker freeze-at-spawn mechanic
 - live map
-- hiders always see seeker
+- square play area
+- square minimap centered on the local player
+- hiders only see seeker when seeker is within visibility radius
 - seeker does not see hiders by default
-- circular map boundary
-- shrinking circle
-- elimination if outside circle after shrink resolution
+- shrinking square boundary
+- elimination if outside square bounds after shrink resolution
 - multiple hotspots
 - tap-to-claim hotspots
-- hotspot radius based on map radius
-- powerup duration based on map radius
+- hotspot radius based on map half-width
+- powerup duration based on map half-width
 - local step counting
 - player level display in lobby/loading screen
 
