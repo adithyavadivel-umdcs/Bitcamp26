@@ -307,7 +307,11 @@ public class MatchFragment extends Fragment {
                 
                 // Also trigger an internal submission so other players see us (for the teammate's backend work)
                 viewModel.submitLocation(location.getUserId(), location.getLatitude(), location.getLongitude());
-            }
+
+                // Boundary check: disqualified if outside the circle
+                checkBoundaryDisqualification(location);
+                }
+
 
             @Override
             public void onError(@NonNull String errorMessage) {
@@ -479,6 +483,50 @@ public class MatchFragment extends Fragment {
 
         // Draw hotspot circles on the real map
         mapManager.updateHotspots(state.getHotspots());
+
+        // Draw boundary circle
+        if (state.getBoundaryCenterLat() != 0 || state.getBoundaryCenterLng() != 0) {
+            mapManager.updateBoundary(
+                    state.getBoundaryCenterLat(),
+                    state.getBoundaryCenterLng(),
+                    state.getBoundaryRadiusMeters()
+            );
+            statusTextView.setText("Status: Boundary active (2 miles)");
+        }
+    }
+
+    /**
+     * Checks if the player is outside the game boundary.
+     * Hiders are disqualified if they cross the line.
+     */
+    private void checkBoundaryDisqualification(@NonNull PlayerLocation location) {
+        GameState state = viewModel.getGameStateValue();
+        Player player = viewModel.getCurrentPlayerValue();
+        
+        if (state == null || player == null || player.isCaught()) return;
+        
+        // Only hiders can be disqualified by boundary
+        if (player.getRole() != PlayerRole.HIDER) return;
+        
+        double centerLat = state.getBoundaryCenterLat();
+        double centerLng = state.getBoundaryCenterLng();
+        double radius = state.getBoundaryRadiusMeters();
+        
+        if (centerLat == 0 && centerLng == 0) return; // No boundary set
+        
+        boolean inside = com.example.bitcamp26.core.util.GeoUtils.isWithinRadius(
+                centerLat, centerLng, 
+                location.getLatitude(), location.getLongitude(), 
+                radius
+        );
+        
+        if (!inside) {
+            // Disqualify the player
+            player.setCaught(true);
+            player.setCaughtBy("BOUNDARY");
+            viewModel.updateGameState(state); // Refresh state
+            showToast("DISQUALIFIED! You went outside the game boundary.");
+        }
     }
 
     private void renderPlayerSummary(@Nullable Player player) {

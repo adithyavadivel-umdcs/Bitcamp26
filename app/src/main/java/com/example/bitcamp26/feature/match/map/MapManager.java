@@ -18,6 +18,7 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,12 +54,21 @@ public class MapManager implements OnMapReadyCallback {
     private static final int HOTSPOT_STROKE = Color.argb(180, 0, 100, 220);
     private static final float HOTSPOT_STROKE_WIDTH = 3f;
 
+    // Game boundary style — Thick red border and dark mask for outside
+    private static final int MASK_FILL   = Color.argb(120, 0, 0, 0); // Dim the outside
+    private static final int BOUNDARY_STROKE = Color.RED;
+    private static final float BOUNDARY_STROKE_WIDTH = 12f;
+
     @Nullable
     private GoogleMap googleMap;
 
     /** Marker representing the local device's GPS position. */
     @Nullable
     private Marker selfMarker;
+    
+    /** Polygon representing the dimmed area outside the boundary. */
+    @Nullable
+    private com.google.android.gms.maps.model.Polygon boundaryMask;
     
     // Buffer for when data is pushed BEFORE onMapReady
     @Nullable
@@ -100,6 +110,61 @@ public class MapManager implements OnMapReadyCallback {
         }
         if (lastKnownHotspots != null) {
             updateHotspots(lastKnownHotspots);
+        }
+        if (lastKnownBoundaryLat != 0 || lastKnownBoundaryLng != 0) {
+            updateBoundary(lastKnownBoundaryLat, lastKnownBoundaryLng, lastKnownBoundaryRadius);
+        }
+    }
+
+    // Buffer for boundary
+    private double lastKnownBoundaryLat;
+    private double lastKnownBoundaryLng;
+    private double lastKnownBoundaryRadius;
+
+    /**
+     * Draws a square boundary that is clear inside and dimmed outside.
+     */
+    public void updateBoundary(double lat, double lng, double radius) {
+        lastKnownBoundaryLat = lat;
+        lastKnownBoundaryLng = lng;
+        lastKnownBoundaryRadius = radius;
+        
+        if (googleMap == null) return;
+
+        // Calculate a square box for the boundary (approx 2 miles)
+        double latDelta = radius / 111000.0;
+        double lngDelta = radius / (111000.0 * Math.cos(Math.toRadians(lat)));
+
+        LatLng northWest = new LatLng(lat + latDelta, lng - lngDelta);
+        LatLng northEast = new LatLng(lat + latDelta, lng + lngDelta);
+        LatLng southEast = new LatLng(lat - latDelta, lng + lngDelta);
+        LatLng southWest = new LatLng(lat - latDelta, lng - lngDelta);
+
+        List<LatLng> hole = new ArrayList<>();
+        hole.add(northWest);
+        hole.add(northEast);
+        hole.add(southEast);
+        hole.add(southWest);
+
+        // World-spanning outer ring to create the mask effect
+        List<LatLng> world = new ArrayList<>();
+        world.add(new LatLng(85, -180));
+        world.add(new LatLng(85, 180));
+        world.add(new LatLng(-85, 180));
+        world.add(new LatLng(-85, -180));
+
+        if (boundaryMask == null) {
+            boundaryMask = googleMap.addPolygon(new com.google.android.gms.maps.model.PolygonOptions()
+                    .addAll(world)
+                    .addHole(hole)
+                    .fillColor(MASK_FILL)
+                    .strokeColor(BOUNDARY_STROKE)
+                    .strokeWidth(BOUNDARY_STROKE_WIDTH)
+                    .zIndex(100f));
+        } else {
+            List<List<LatLng>> holes = new ArrayList<>();
+            holes.add(hole);
+            boundaryMask.setHoles(holes);
         }
     }
 

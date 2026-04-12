@@ -15,8 +15,22 @@ public class Lobby {
     private List<Player> players;
     private int playerCount;
 
+    // Boundary info
+    private double boundaryCenterLat;
+    private double boundaryCenterLng;
+    private double boundaryRadiusMeters;
+
     public Lobby() {
     }
+
+    public double getBoundaryCenterLat() { return boundaryCenterLat; }
+    public void setBoundaryCenterLat(double lat) { this.boundaryCenterLat = lat; }
+
+    public double getBoundaryCenterLng() { return boundaryCenterLng; }
+    public void setBoundaryCenterLng(double lng) { this.boundaryCenterLng = lng; }
+
+    public double getBoundaryRadiusMeters() { return boundaryRadiusMeters; }
+    public void setBoundaryRadiusMeters(double radius) { this.boundaryRadiusMeters = radius; }
 
     public String getCode() {
         return code;

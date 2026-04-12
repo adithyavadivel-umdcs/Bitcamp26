@@ -16,8 +16,22 @@ public class GameState {
     private List<Player> players;
     private List<HotspotState> hotspots;
 
+    // Boundary info
+    private double boundaryCenterLat;
+    private double boundaryCenterLng;
+    private double boundaryRadiusMeters;
+
     public GameState() {
     }
+
+    public double getBoundaryCenterLat() { return boundaryCenterLat; }
+    public void setBoundaryCenterLat(double lat) { this.boundaryCenterLat = lat; }
+
+    public double getBoundaryCenterLng() { return boundaryCenterLng; }
+    public void setBoundaryCenterLng(double lng) { this.boundaryCenterLng = lng; }
+
+    public double getBoundaryRadiusMeters() { return boundaryRadiusMeters; }
+    public void setBoundaryRadiusMeters(double radius) { this.boundaryRadiusMeters = radius; }
 
     public boolean isStarted() {
         return started;

@@ -24,6 +24,9 @@ import com.example.bitcamp26.navigation.AppNavigator;
 import com.example.bitcamp26.ui.MainActivity;
 import com.example.bitcamp26.R;
 
+import com.example.bitcamp26.data.location.LocationRepository;
+import com.example.bitcamp26.data.location.PlayerLocation;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,6 +48,9 @@ public class ReadyCheckFragment extends Fragment {
     private Button startMatchButton;
     private ProgressBar progressBar;
 
+    private LocationRepository locationRepository;
+    private PlayerLocation lastKnownLocation;
+
     private Lobby currentLobby;
     private String currentPlayerId;
     private boolean currentPlayerReady;
@@ -60,8 +66,38 @@ public class ReadyCheckFragment extends Fragment {
                              @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
         readyCheckOpenedAt = TimeUitls.nowMillis();
+        locationRepository = new LocationRepository(requireContext());
         seedPlaceholderLobbyIfNeeded();
         return inflater.inflate(R.layout.fragment_ready_check, container, false);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        startTrackingLocation();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (locationRepository != null) {
+            locationRepository.stopLocationUpdates();
+        }
+    }
+
+    private void startTrackingLocation() {
+        String uid = currentPlayerId != null ? currentPlayerId : "local_player";
+        locationRepository.startLocationUpdates(uid, new LocationRepository.LocationUpdateCallback() {
+            @Override
+            public void onLocationUpdate(@NonNull PlayerLocation location) {
+                lastKnownLocation = location;
+            }
+
+            @Override
+            public void onError(@NonNull String errorMessage) {
+                // Ignore background errors, handled during startMatchIfPossible
+            }
+        });
     }
 
     @Override
@@ -166,6 +202,13 @@ public class ReadyCheckFragment extends Fragment {
             return;
         }
 
+        // Ensure we have a valid location before starting the zone
+        if (lastKnownLocation == null) {
+            showStatus("Waiting for GPS fix...");
+            showToast("Cannot start match without a valid GPS location.");
+            return;
+        }
+
         currentLobby.setStarted(true);
         showStatus("All players ready. Match can start now.");
         refreshUi();
@@ -196,6 +239,17 @@ public class ReadyCheckFragment extends Fragment {
             durationMillis = 300000L; // Default 5 minutes
         }
         state.setEndsAt(now + durationMillis);
+
+        // Initialize boundary center at THIS user's real-time location
+        if (lastKnownLocation != null) {
+            state.setBoundaryCenterLat(lastKnownLocation.getLatitude());
+            state.setBoundaryCenterLng(lastKnownLocation.getLongitude());
+        } else {
+            // Extreme fallback if GPS fails last second
+            state.setBoundaryCenterLat(38.9869);
+            state.setBoundaryCenterLng(-76.9426);
+        }
+        state.setBoundaryRadiusMeters(3218); // 2 miles in meters
 
         // Add some sample hotspots near a default location if none exist
         List<HotspotState> hotspots = new ArrayList<>();
@@ -428,18 +482,24 @@ public class ReadyCheckFragment extends Fragment {
         p1.setDisplayName("Host Player [READY]");
         p1.setRole(PlayerRole.SEEKER);
         p1.setCaught(false);
+        p1.setLatitude(38.9869);
+        p1.setLongitude(-76.9426);
 
         Player p2 = new Player();
         p2.setId("player_me");
         p2.setDisplayName("My Player");
         p2.setRole(PlayerRole.HIDER);
         p2.setCaught(false);
+        p2.setLatitude(38.9875);
+        p2.setLongitude(-76.9400);
 
         Player p3 = new Player();
         p3.setId("player_3");
         p3.setDisplayName("Teammate");
         p3.setRole(PlayerRole.HIDER);
         p3.setCaught(false);
+        p3.setLatitude(38.9850);
+        p3.setLongitude(-76.9450);
 
         players.add(p1);
         players.add(p2);
