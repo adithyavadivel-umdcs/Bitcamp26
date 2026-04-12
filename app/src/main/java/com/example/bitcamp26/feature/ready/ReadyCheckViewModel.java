@@ -1,4 +1,3 @@
-
 package com.example.bitcamp26.feature.ready;
 
 import androidx.annotation.NonNull;
@@ -9,32 +8,18 @@ import androidx.lifecycle.ViewModel;
 
 import com.example.bitcamp26.core.model.Lobby;
 import com.example.bitcamp26.core.model.Player;
-import com.example.bitcamp26.domain.usecase.StartGameUseCase;
+import com.example.bitcamp26.data.lobby.LobbyRepository;
+import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * ViewModel for the ready-check screen.
- *
- * Responsibilities:
- * - hold the current lobby state during ready check
- * - track the current player ID
- * - expose derived state such as player list, readiness progress, and whether the match can start
- * - toggle the current player's ready state
- * - support a demo helper that marks everyone ready
- * - attempt to start a match through StartGameUseCase
- *
- * Notes:
- * - This ViewModel is designed to work even before a dedicated repository-backed ready system exists.
- * - Because the current Player model may not yet include a real `ready` boolean, this implementation
- *   stores readiness in the display name suffix "[READY]" as a temporary MVP strategy.
- * - Once the Player model adds a dedicated ready field, only `isPlayerReady(...)` and
- *   `applyReadyStateToPlayer(...)` need to be updated.
+ * ViewModel for the RTDB-backed ready-check screen.
  */
 public class ReadyCheckViewModel extends ViewModel {
 
-    private final StartGameUseCase startGameUseCase;
+    private final LobbyRepository lobbyRepository;
 
     private final MutableLiveData<Lobby> currentLobby = new MutableLiveData<>();
     private final MutableLiveData<String> currentPlayerId = new MutableLiveData<>();
@@ -48,12 +33,15 @@ public class ReadyCheckViewModel extends ViewModel {
     private final MutableLiveData<Boolean> currentPlayerReady = new MutableLiveData<>(false);
     private final MutableLiveData<Boolean> matchStarted = new MutableLiveData<>(false);
 
+    private ValueEventListener activeLobbyListener;
+    private String activeLobbyCode;
+
     public ReadyCheckViewModel() {
-        this(new StartGameUseCase());
+        this(new LobbyRepository());
     }
 
-    public ReadyCheckViewModel(@NonNull StartGameUseCase startGameUseCase) {
-        this.startGameUseCase = startGameUseCase;
+    public ReadyCheckViewModel(@NonNull LobbyRepository lobbyRepository) {
+        this.lobbyRepository = lobbyRepository;
     }
 
     @NonNull
@@ -111,145 +99,123 @@ public class ReadyCheckViewModel extends ViewModel {
         return matchStarted;
     }
 
-    /**
-     * Sets the current lobby and refreshes all derived state.
-     */
     public void setLobby(@Nullable Lobby lobby) {
         currentLobby.setValue(lobby);
         recalculateDerivedState();
     }
 
-    /**
-     * Sets the current player ID and refreshes all derived state.
-     */
+    public void observeLobby(@Nullable String lobbyCode) {
+        if (lobbyCode == null || lobbyCode.trim().isEmpty()) {
+            errorMessage.setValue("Lobby code missing.");
+            return;
+        }
+
+        clearActiveObserver();
+        activeLobbyCode = lobbyCode.trim().toUpperCase();
+        activeLobbyListener = lobbyRepository.observeLobby(activeLobbyCode, new LobbyRepository.LobbyCallback() {
+            @Override
+            public void onSuccess(@NonNull Lobby lobby) {
+                currentLobby.postValue(lobby);
+                recalculateDerivedState();
+            }
+
+            @Override
+            public void onError(@NonNull String errorMessageValue) {
+                errorMessage.postValue(errorMessageValue);
+            }
+        });
+    }
+
     public void setCurrentPlayerId(@Nullable String playerId) {
         currentPlayerId.setValue(playerId);
         recalculateDerivedState();
     }
 
-    /**
-     * Recomputes all values derived from the lobby/player state.
-     */
-    public void refresh() {
-        recalculateDerivedState();
-    }
-
-    /**
-     * Toggles the current player's ready status.
-     */
     public void toggleCurrentPlayerReady() {
         Lobby lobby = currentLobby.getValue();
-        if (lobby == null) {
+        String playerId = currentPlayerId.getValue();
+        Player player = lobby == null ? null : findCurrentPlayer(lobby);
+
+        if (lobby == null || lobby.getCode() == null || lobby.getCode().trim().isEmpty()) {
             errorMessage.setValue("Cannot update readiness because the lobby is missing.");
             return;
         }
-
+        if (playerId == null || playerId.trim().isEmpty() || player == null) {
+            errorMessage.setValue("Current player was not found in the lobby.");
+            return;
+        }
         if (lobby.isStarted()) {
             errorMessage.setValue("Cannot change readiness after the match has started.");
             return;
         }
 
-        Player player = findCurrentPlayer(lobby);
-        if (player == null) {
-            errorMessage.setValue("Current player was not found in the lobby.");
-            return;
-        }
-
-        boolean nextReady = !isPlayerReady(player);
-        applyReadyStateToPlayer(player, nextReady);
-
-        currentLobby.setValue(lobby);
-        statusMessage.setValue(nextReady ? "You are marked ready." : "You are marked not ready.");
-        errorMessage.setValue(null);
-        recalculateDerivedState();
-    }
-
-    /**
-     * Demo helper to mark all players ready.
-     */
-    public void markEveryoneReady() {
-        Lobby lobby = currentLobby.getValue();
-        if (lobby == null || lobby.getPlayers() == null) {
-            errorMessage.setValue("No lobby players available to update.");
-            return;
-        }
-
-        for (Player player : lobby.getPlayers()) {
-            if (player == null) {
-                continue;
+        loading.setValue(true);
+        boolean nextReady = !player.isReady();
+        lobbyRepository.setPlayerReady(lobby.getCode(), playerId, nextReady, new LobbyRepository.SimpleCallback() {
+            @Override
+            public void onSuccess() {
+                loading.postValue(false);
+                statusMessage.postValue(nextReady ? "You are marked ready." : "You are marked not ready.");
+                errorMessage.postValue(null);
             }
-            applyReadyStateToPlayer(player, true);
-        }
 
-        currentLobby.setValue(lobby);
-        statusMessage.setValue("All players marked ready.");
-        errorMessage.setValue(null);
-        recalculateDerivedState();
+            @Override
+            public void onError(@NonNull String errorMessageValue) {
+                loading.postValue(false);
+                errorMessage.postValue(errorMessageValue);
+            }
+        });
     }
 
-    /**
-     * Attempts to start the match.
-     *
-     * This validates that everyone is ready, then delegates to StartGameUseCase.
-     * Since ready check currently does not manage hotspots, an empty hotspot list is used.
-     */
+    public void markEveryoneReady() {
+        errorMessage.setValue("Ready state is backend-owned per player. Each player must mark themselves ready.");
+    }
+
     public void startMatch() {
         Lobby lobby = currentLobby.getValue();
-        if (lobby == null) {
+        String playerId = currentPlayerId.getValue();
+        if (lobby == null || lobby.getCode() == null || lobby.getCode().trim().isEmpty()) {
             errorMessage.setValue("Lobby missing. Cannot start the match.");
             return;
         }
-
-        if (lobby.isStarted()) {
-            statusMessage.setValue("Match already started.");
-            matchStarted.setValue(true);
-            recalculateDerivedState();
-            return;
-        }
-
         if (!Boolean.TRUE.equals(allPlayersReady.getValue())) {
             errorMessage.setValue("Not everyone is ready yet.");
             return;
         }
-
-        loading.setValue(true);
-        errorMessage.setValue(null);
-
-        StartGameUseCase.StartGameResult result = startGameUseCase.execute(lobby, new ArrayList<>());
-
-        loading.setValue(false);
-
-        if (!result.isSuccess() || result.getUpdatedLobby() == null) {
-            errorMessage.setValue(result.getMessage());
+        if (playerId == null || !playerId.equals(lobby.getHostId())) {
+            errorMessage.setValue("Only the host can start the match.");
             return;
         }
 
-        currentLobby.setValue(result.getUpdatedLobby());
-        matchStarted.setValue(true);
-        statusMessage.setValue(result.getMessage());
-        errorMessage.setValue(null);
-        recalculateDerivedState();
+        loading.setValue(true);
+        lobbyRepository.startGame(lobby.getCode(), new LobbyRepository.SimpleCallback() {
+            @Override
+            public void onSuccess() {
+                loading.postValue(false);
+                statusMessage.postValue("Match started.");
+                errorMessage.postValue(null);
+            }
+
+            @Override
+            public void onError(@NonNull String errorMessageValue) {
+                loading.postValue(false);
+                errorMessage.postValue(errorMessageValue);
+            }
+        });
     }
 
-    /**
-     * Returns the current player from the current lobby, if present.
-     */
-    @Nullable
-    public Player getCurrentPlayerValue() {
-        Lobby lobby = currentLobby.getValue();
-        return lobby == null ? null : findCurrentPlayer(lobby);
+    @Override
+    protected void onCleared() {
+        clearActiveObserver();
+        super.onCleared();
     }
 
-    /**
-     * Returns a safe copy of the current player list.
-     */
-    @NonNull
-    public List<Player> getPlayersSnapshot() {
-        Lobby lobby = currentLobby.getValue();
-        if (lobby == null || lobby.getPlayers() == null) {
-            return new ArrayList<>();
+    private void clearActiveObserver() {
+        if (activeLobbyCode != null && activeLobbyListener != null) {
+            lobbyRepository.removeLobbyObserver(activeLobbyCode, activeLobbyListener);
         }
-        return new ArrayList<>(lobby.getPlayers());
+        activeLobbyCode = null;
+        activeLobbyListener = null;
     }
 
     private void recalculateDerivedState() {
@@ -258,24 +224,23 @@ public class ReadyCheckViewModel extends ViewModel {
 
         int total = players.size();
         int ready = 0;
-
         for (Player player : players) {
-            if (player != null && isPlayerReady(player)) {
+            if (player != null && player.isReady()) {
                 ready++;
             }
         }
 
-        totalPlayerCount.setValue(total);
-        readyPlayerCount.setValue(ready);
-        readyProgressPercent.setValue(total == 0 ? 0 : (int) ((ready * 100f) / total));
-        allPlayersReady.setValue(total > 0 && ready == total);
-        currentPlayerReady.setValue(resolveCurrentPlayerReady(lobby));
-        matchStarted.setValue(lobby != null && lobby.isStarted());
+        totalPlayerCount.postValue(total);
+        readyPlayerCount.postValue(ready);
+        readyProgressPercent.postValue(total == 0 ? 0 : (int) ((ready * 100f) / total));
+        allPlayersReady.postValue(total > 0 && ready == total);
+        currentPlayerReady.postValue(resolveCurrentPlayerReady(lobby));
+        matchStarted.postValue(lobby != null && lobby.isStarted());
     }
 
     private boolean resolveCurrentPlayerReady(@Nullable Lobby lobby) {
         Player player = lobby == null ? null : findCurrentPlayer(lobby);
-        return player != null && isPlayerReady(player);
+        return player != null && player.isReady();
     }
 
     @Nullable
@@ -286,14 +251,10 @@ public class ReadyCheckViewModel extends ViewModel {
         }
 
         for (Player player : getSafePlayers(lobby)) {
-            if (player == null || player.getId() == null) {
-                continue;
-            }
-            if (playerId.equals(player.getId())) {
+            if (player != null && playerId.equals(player.getId())) {
                 return player;
             }
         }
-
         return null;
     }
 
@@ -303,30 +264,5 @@ public class ReadyCheckViewModel extends ViewModel {
             return new ArrayList<>();
         }
         return lobby.getPlayers();
-    }
-
-    /**
-     * Temporary MVP readiness rule.
-     *
-     * Replace this with `player.isReady()` once the Player model has a dedicated field.
-     */
-    private boolean isPlayerReady(@NonNull Player player) {
-        String displayName = player.getDisplayName();
-        return displayName != null && displayName.contains("[READY]");
-    }
-
-    /**
-     * Temporary MVP readiness writer.
-     *
-     * Replace this with `player.setReady(ready)` once the Player model has a dedicated field.
-     */
-    private void applyReadyStateToPlayer(@NonNull Player player, boolean ready) {
-        String name = player.getDisplayName();
-        if (name == null || name.trim().isEmpty()) {
-            name = "Player";
-        }
-
-        String cleaned = name.replace("[READY]", "").trim();
-        player.setDisplayName(ready ? cleaned + " [READY]" : cleaned);
     }
 }
