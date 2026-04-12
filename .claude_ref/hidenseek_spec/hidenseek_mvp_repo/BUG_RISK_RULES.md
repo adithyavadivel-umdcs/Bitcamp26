@@ -9,12 +9,12 @@
 - For seeker freeze, require sustained violation before DQ
 
 ## Hotspot logic
-- Client may show local claim affordance
-- Server is final authority on claim success
-- First valid claim wins
-- Hotspot deactivates after successful claim
-- Do not use dwell timers
-- Do not use per-player cooldowns
+- Client may show local dwell progress affordance
+- Server is final authority on hotspot reward success
+- Multiple players may earn from the same hotspot independently
+- Hotspot progress resets immediately on exit
+- Use per-player dwell state, not hotspot locks
+- Use per-player cooldowns only after a reward is granted
 
 ## Catch logic
 - Seeker code submission only succeeds if target hider is currently catch-eligible

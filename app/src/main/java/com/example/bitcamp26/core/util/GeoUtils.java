@@ -30,7 +30,8 @@ public final class GeoUtils {
     }
 
     /**
-     * Returns true if the second point lies within the given radius of the center point.
+     * Returns true if the second point lies within the given square half-width of the center
+     * point. The historical method name is preserved for compatibility with existing callers.
      */
     public static boolean isWithinRadius(
             double centerLat,
@@ -43,7 +44,21 @@ public final class GeoUtils {
             return false;
         }
 
-        return distanceMeters(centerLat, centerLng, targetLat, targetLng) <= radiusMeters;
+        return latitudeDeltaMeters(centerLat, targetLat) <= radiusMeters
+                && longitudeDeltaMeters(centerLat, centerLng, targetLng) <= radiusMeters;
+    }
+
+    private static double latitudeDeltaMeters(double aLat, double bLat) {
+        return Math.abs(bLat - aLat) * 111111.0;
+    }
+
+    private static double longitudeDeltaMeters(double centerLat,
+                                               double centerLng,
+                                               double targetLng) {
+        double metersPerDegree = 111111.0
+                * Math.max(Math.cos(Math.toRadians(centerLat)), 0.000001);
+        double delta = normalizeLongitude(targetLng - centerLng);
+        return Math.abs(delta) * metersPerDegree;
     }
 
     /**
@@ -73,6 +88,10 @@ public final class GeoUtils {
             normalized += 360.0;
         }
 
+        if (normalized == 180.0) {
+            return -180.0;
+        }
+
         return normalized;
     }
 
@@ -95,6 +114,17 @@ public final class GeoUtils {
      * Returns the midpoint longitude between two coordinates.
      */
     public static double midpointLongitude(double lng1, double lng2) {
-        return normalizeLongitude((lng1 + lng2) / 2.0);
+        double normalizedLng1 = normalizeLongitude(lng1);
+        double normalizedLng2 = normalizeLongitude(lng2);
+        double delta = normalizedLng2 - normalizedLng1;
+
+        // Cross-dateline pairs should be averaged along the wrapped shortest arc.
+        if (delta > 180.0) {
+            normalizedLng1 += 360.0;
+        } else if (delta < -180.0) {
+            normalizedLng2 += 360.0;
+        }
+
+        return normalizeLongitude((normalizedLng1 + normalizedLng2) / 2.0);
     }
 }

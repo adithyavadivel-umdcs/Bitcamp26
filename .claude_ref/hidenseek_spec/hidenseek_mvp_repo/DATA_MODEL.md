@@ -15,18 +15,21 @@ lobbies/{lobbyId}
   mapCenterLng: number
   initialHalfWidthMeters: number
   currentHalfWidthMeters: number
-  rallyPointLat: number
-  rallyPointLng: number
   seekerId: string
   config:
     headStartSeconds: number
     shrinkIntervalSeconds: number
     shrinkWarningSeconds: number
     catchEligibilityRadiusMeters: number
+    hotspotSideLengthMeters: number
+    hotspotMaxCoverageFraction: number
+    hotspotDwellSeconds: number
+    hotspotPersonalCooldownSeconds: number
     seekerFreezeRadiusMeters: number
-    seekerVisibilityRadiusMeters: number
-    hiderInvisibilityDurationSeconds: number
-    seekerRevealAllDurationSeconds: number
+    hiderVisionReductionDurationSeconds: number
+    seekerMinimapBoostDurationSeconds: number
+    hiderVisionReductionMultiplier: number
+    seekerMinimapBoostMultiplier: number
     startClusterRadiusMeters: number
   timing:
     gameStartAt: number
@@ -48,20 +51,22 @@ lobbies/{lobbyId}/players/{userId}
   lastLocationAt: number
   stepsAtGameStart: number
   currentMatchSteps: number
-  activePowerup: "NONE" | "HIDER_INVISIBILITY" | "SEEKER_REVEAL_ALL"
+  storedPowerupType: "NONE" | "HIDER_VISION_REDUCTION" | "SEEKER_MINIMAP_BOOST"
+  nextPowerupEligibleAt: number
+  currentHotspotId: string | null
+  hotspotEnteredAt: number | null
+  hotspotRewardGrantedForCurrentStay: boolean
+  activePowerup: "NONE" | "HIDER_VISION_REDUCTION" | "SEEKER_MINIMAP_BOOST"
   powerupEndsAt: number | null
   catchCode: string | null
   catchEligible: boolean
-  seekerVisibleToHider: boolean
 
 lobbies/{lobbyId}/hotspots/{hotspotId}
   id: string
   lat: number
   lng: number
-  radiusMeters: number
-  active: boolean
-  claimedBy: string | null
-  claimedAt: number | null
+  radiusMeters: number // stored hotspot half-width for a 15ft by 15ft square
+  active: boolean // always true for the full match in MVP
   powerupType: string
 
 lobbies/{lobbyId}/events/{eventId}

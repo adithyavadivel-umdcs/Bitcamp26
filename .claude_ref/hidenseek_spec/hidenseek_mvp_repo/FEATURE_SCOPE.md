@@ -12,14 +12,20 @@
 - live map
 - square play area
 - square minimap centered on the local player
-- hiders only see seeker when seeker is within visibility radius
+- hiders only see seeker when seeker falls inside the hider minimap window
 - seeker does not see hiders by default
 - shrinking square boundary
 - elimination if outside square bounds after shrink resolution
 - multiple hotspots
-- tap-to-claim hotspots
-- hotspot radius based on map half-width
+- hotspots are fixed 15ft by 15ft squares
+- hotspot count is capped by strict sub-10-percent total map coverage
+- dwell-based hotspot rewards
+- per-player hotspot progress resets on exit
+- per-player hotspot cooldowns
+- hotspots can reward multiple players independently
 - powerup duration based on map half-width
+- seeker powerup doubles minimap width and height
+- hider powerup reduces seeker-specific visibility for that hider to 0.6x
 - local step counting
 - player level display in lobby/loading screen
 
@@ -32,7 +38,6 @@
 - no votes
 
 ### Postgame / eliminated flow
-- rally point outside play area
 - open in Google Maps button
 
 ## CUT
@@ -59,9 +64,6 @@
 - rarity system
 - full anti-cheat system
 - replay system
-- hotspot dwell timers
-- hotspot progress interruptions
-- per-player hotspot cooldowns
 
 ### Platform complexity
 - background gameplay

@@ -32,13 +32,12 @@ Game loop:
 - seeker frozen during head start
 - hiders always see seeker
 - seeker does not see hiders by default
-- circular map shrinks over time
+- square map shrinks over time
 - multiple hotspots
-- tap-to-claim hotspots
-- hotspots are single-use
+- dwell-based reusable hotspots
 - two powerups only:
-  - hider invisibility
-  - seeker reveal all
+  - hider vision reduction
+  - seeker minimap boost
 - each hider gets a unique 6-digit catch code
 - seeker can submit a code only when that hider is catch-eligible
 - correct eligible code eliminates the hider
