@@ -1,4 +1,3 @@
-
 package com.example.bitcamp26.feature.lobby;
 
 import android.os.Bundle;
@@ -14,30 +13,19 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+import androidx.lifecycle.ViewModelProvider;
 
 import com.example.bitcamp26.R;
 import com.example.bitcamp26.core.model.Lobby;
-import com.example.bitcamp26.core.model.Player;
-import com.example.bitcamp26.core.util.CodeUtils;
-import com.example.bitcamp26.core.model.PlayerRole;
-import com.example.bitcamp26.data.auth.AuthRepository;
-import com.example.bitcamp26.data.lobby.LobbyRepository;
 import com.example.bitcamp26.navigation.AppNavigator;
 import com.example.bitcamp26.ui.MainActivity;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
- * Simple lobby screen for creating and joining lobbies.
- *
- * This fragment builds its UI programmatically so it can run even before
- * a dedicated XML layout and navigation flow are connected.
+ * Lobby screen wired to backend-authoritative create/join flows.
  */
 public class LobbyFragment extends Fragment {
 
-    private LobbyRepository lobbyRepository;
-    private AuthRepository authRepository;
+    private LobbyViewModel viewModel;
 
     private EditText displayNameInput;
     private EditText lobbyCodeInput;
@@ -45,9 +33,9 @@ public class LobbyFragment extends Fragment {
     private Button joinLobbyButton;
     private ProgressBar progressBar;
     private TextView statusTextView;
+    private boolean pendingNavigationToReadyCheck;
 
     public LobbyFragment() {
-        // Required empty public constructor
     }
 
     @Nullable
@@ -55,8 +43,7 @@ public class LobbyFragment extends Fragment {
     public View onCreateView(@NonNull LayoutInflater inflater,
                              @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
-        lobbyRepository = new LobbyRepository();
-        authRepository = new AuthRepository();
+        viewModel = new ViewModelProvider(this).get(LobbyViewModel.class);
         return inflater.inflate(R.layout.fragment_lobby, container, false);
     }
 
@@ -71,183 +58,56 @@ public class LobbyFragment extends Fragment {
         progressBar = view.findViewById(R.id.progressLobby);
         statusTextView = view.findViewById(R.id.textLobbyStatus);
 
-        createLobbyButton.setOnClickListener(v -> createLobby());
-        joinLobbyButton.setOnClickListener(v -> joinLobby());
+        createLobbyButton.setOnClickListener(v -> {
+            pendingNavigationToReadyCheck = true;
+            viewModel.createLobby(getTrimmedText(displayNameInput));
+        });
+        joinLobbyButton.setOnClickListener(v -> {
+            pendingNavigationToReadyCheck = true;
+            viewModel.joinLobby(getTrimmedText(lobbyCodeInput), getTrimmedText(displayNameInput));
+        });
+
+        bindObservers();
     }
 
-    private void createLobby() {
-        String displayName = getTrimmedText(displayNameInput);
-        if (displayName.isEmpty()) {
-            showMessage("Please enter a display name.");
-            return;
-        }
+    private void bindObservers() {
+        viewModel.getLoading().observe(getViewLifecycleOwner(), isLoading ->
+                setLoading(Boolean.TRUE.equals(isLoading)));
 
-        String userId = authRepository.getCurrentUserId();
-        if (userId == null || userId.trim().isEmpty()) {
-            showMessage("You must be signed in before creating a lobby.");
-            return;
-        }
+        viewModel.getStatusMessage().observe(getViewLifecycleOwner(), message -> {
+            if (message == null || message.trim().isEmpty() || !isAdded()) {
+                return;
+            }
+            statusTextView.setText(message);
+            Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show();
+        });
 
-        setLoading(true);
+        viewModel.getErrorMessage().observe(getViewLifecycleOwner(), message -> {
+            if (message == null || message.trim().isEmpty()) {
+                return;
+            }
+            pendingNavigationToReadyCheck = false;
+            showMessage(message);
+        });
 
-        String lobbyCode = CodeUtils.generateCode();
-        Lobby lobby = buildNewLobby(lobbyCode, userId, displayName);
-
-        lobbyRepository.createLobby(lobbyCode, lobby, new LobbyRepository.LobbyCallback() {
-            @Override
-            public void onSuccess(@NonNull Lobby createdLobby) {
-                setLoading(false);
-                if (!isAdded()) {
-                    return;
-                }
-
-                String message = "Lobby created: " + CodeUtils.formatCodeForDisplay(lobbyCode);
-                statusTextView.setText(message);
+        viewModel.getCurrentLobbyCode().observe(getViewLifecycleOwner(), lobbyCode -> {
+            if (lobbyCode != null && !lobbyCode.trim().isEmpty()) {
                 lobbyCodeInput.setText(lobbyCode);
-                Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show();
-                navigateToReadyCheck(createdLobby, userId);
-            }
-
-            @Override
-            public void onError(@NonNull String errorMessage) {
-                setLoading(false);
-                if (!isAdded()) {
-                    return;
-                }
-
-                showMessage(errorMessage);
             }
         });
-    }
 
-    private void joinLobby() {
-        String displayName = getTrimmedText(displayNameInput);
-        if (displayName.isEmpty()) {
-            showMessage("Please enter a display name.");
-            return;
-        }
-
-        String userId = authRepository.getCurrentUserId();
-        if (userId == null || userId.trim().isEmpty()) {
-            showMessage("You must be signed in before joining a lobby.");
-            return;
-        }
-
-        String rawLobbyCode = getTrimmedText(lobbyCodeInput);
-        String lobbyCode = CodeUtils.normalizeCode(rawLobbyCode);
-        if (!CodeUtils.isValidCode(lobbyCode)) {
-            showMessage("Please enter a valid 6-character lobby code.");
-            return;
-        }
-
-        setLoading(true);
-
-        lobbyRepository.getLobby(lobbyCode, new LobbyRepository.LobbyCallback() {
-            @Override
-            public void onSuccess(@NonNull Lobby lobby) {
-                if (!isAdded()) {
-                    setLoading(false);
-                    return;
-                }
-
-                List<Player> players = lobby.getPlayers();
-                if (players == null) {
-                    players = new ArrayList<>();
-                    lobby.setPlayers(players);
-                }
-
-                for (Player existingPlayer : players) {
-                    if (existingPlayer != null && userId.equals(existingPlayer.getId())) {
-                        setLoading(false);
-                        String message = "You are already in this lobby.";
-                        statusTextView.setText(message);
-                        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
-                        navigateToReadyCheck(lobby, userId);
-                        return;
-                    }
-                }
-
-                // Firebase enum deserialization silently drops the role field on read.
-                // Repair any null roles before writing back so the host's SEEKER role
-                // is not permanently overwritten with null by this updateLobby call.
-                for (int i = 0; i < players.size(); i++) {
-                    Player p = players.get(i);
-                    if (p != null && p.getRole() == null) {
-                        p.setRole(i == 0 ? PlayerRole.SEEKER : PlayerRole.HIDER);
-                    }
-                }
-
-                Player player = new Player();
-                player.setId(userId);
-                player.setDisplayName(displayName);
-                player.setRole(PlayerRole.HIDER);
-                player.setCaught(false);
-                player.setCatchCode(CodeUtils.generateCode());
-
-                players.add(player);
-                lobby.setPlayerCount(players.size());
-
-                lobbyRepository.updateLobby(lobbyCode, lobby, new LobbyRepository.LobbyCallback() {
-                    @Override
-                    public void onSuccess(@NonNull Lobby updatedLobby) {
-                        setLoading(false);
-                        if (!isAdded()) {
-                            return;
-                        }
-
-                        String message = "Joined lobby: " + CodeUtils.formatCodeForDisplay(lobbyCode);
-                        statusTextView.setText(message);
-                        Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show();
-                        navigateToReadyCheck(updatedLobby, userId);
-                    }
-
-                    @Override
-                    public void onError(@NonNull String errorMessage) {
-                        setLoading(false);
-                        if (!isAdded()) {
-                            return;
-                        }
-
-                        showMessage(errorMessage);
-                    }
-                });
+        viewModel.getCurrentLobby().observe(getViewLifecycleOwner(), lobby -> {
+            if (lobby == null) {
+                return;
             }
-
-            @Override
-            public void onError(@NonNull String errorMessage) {
-                setLoading(false);
-                if (!isAdded()) {
-                    return;
+            if (pendingNavigationToReadyCheck) {
+                String userId = viewModel.getSignedInUserId();
+                if (userId != null && !userId.trim().isEmpty()) {
+                    pendingNavigationToReadyCheck = false;
+                    navigateToReadyCheck(lobby, userId);
                 }
-
-                showMessage(errorMessage);
             }
         });
-    }
-
-    @NonNull
-    private Lobby buildNewLobby(@NonNull String lobbyCode,
-                                @NonNull String userId,
-                                @NonNull String displayName) {
-        Lobby lobby = new Lobby();
-        lobby.setCode(lobbyCode);
-        lobby.setStarted(false);
-        lobby.setMaxPlayers(8);
-        lobby.setMatchDurationSeconds(300);
-
-        Player hostPlayer = new Player();
-        hostPlayer.setId(userId);
-        hostPlayer.setDisplayName(displayName);
-        hostPlayer.setRole(PlayerRole.SEEKER);
-        hostPlayer.setCaught(false);
-        hostPlayer.setCatchCode(CodeUtils.generateCode());
-
-        List<Player> players = new ArrayList<>();
-        players.add(hostPlayer);
-
-        lobby.setPlayers(players);
-        lobby.setPlayerCount(players.size());
-        return lobby;
     }
 
     private void navigateToReadyCheck(@NonNull Lobby lobby, @NonNull String currentPlayerId) {
@@ -289,5 +149,4 @@ public class LobbyFragment extends Fragment {
         }
         return editText.getText().toString().trim();
     }
-
 }

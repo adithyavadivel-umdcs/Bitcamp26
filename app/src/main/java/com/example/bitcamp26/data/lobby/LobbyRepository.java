@@ -6,44 +6,67 @@ import androidx.annotation.Nullable;
 import com.example.bitcamp26.core.model.Lobby;
 import com.google.firebase.database.ValueEventListener;
 
+import java.util.Map;
+
 /**
- * Repository layer for lobby operations.
- * Wraps the remote data source and provides a clean API for the rest of the app.
+ * Repository for backend-authoritative lobby actions and RTDB observation.
  */
 public class LobbyRepository {
 
     private final LobbyRemoteDataSource remoteDataSource;
+    private final FunctionsRemoteDataSource functionsRemoteDataSource;
 
     public LobbyRepository() {
-        this(new LobbyRemoteDataSource());
+        this(new LobbyRemoteDataSource(), new FunctionsRemoteDataSource());
     }
 
-    public LobbyRepository(@NonNull LobbyRemoteDataSource remoteDataSource) {
+    public LobbyRepository(@NonNull LobbyRemoteDataSource remoteDataSource,
+                           @NonNull FunctionsRemoteDataSource functionsRemoteDataSource) {
         this.remoteDataSource = remoteDataSource;
+        this.functionsRemoteDataSource = functionsRemoteDataSource;
     }
 
-    /**
-     * Creates a new lobby in Firebase.
-     */
-    public void createLobby(@NonNull String lobbyCode,
-                            @NonNull Lobby lobby,
+    public void createLobby(@NonNull String displayName,
                             @NonNull final LobbyCallback callback) {
-        remoteDataSource.createLobby(lobbyCode, lobby, new LobbyRemoteDataSource.LobbyWriteCallback() {
+        functionsRemoteDataSource.callCreateLobby(displayName, new FunctionsRemoteDataSource.FunctionCallback() {
             @Override
-            public void onSuccess() {
-                callback.onSuccess(lobby);
+            public void onSuccess(@NonNull Map<String, Object> result) {
+                String lobbyId = getString(result.get("lobbyId"));
+                if (lobbyId == null || lobbyId.trim().isEmpty()) {
+                    callback.onError("Backend did not return a lobby ID.");
+                    return;
+                }
+                getLobby(lobbyId, callback);
             }
 
             @Override
-            public void onError(@NonNull String errorMessage) {
-                callback.onError(errorMessage);
+            public void onError(@NonNull Exception e) {
+                callback.onError(getMessageOrDefault(e, "Failed to create lobby."));
             }
         });
     }
 
-    /**
-     * Fetches a lobby once.
-     */
+    public void joinLobby(@NonNull String inviteCode,
+                          @NonNull String displayName,
+                          @NonNull final LobbyCallback callback) {
+        functionsRemoteDataSource.callJoinLobby(inviteCode, displayName, new FunctionsRemoteDataSource.FunctionCallback() {
+            @Override
+            public void onSuccess(@NonNull Map<String, Object> result) {
+                String lobbyId = getString(result.get("lobbyId"));
+                if (lobbyId == null || lobbyId.trim().isEmpty()) {
+                    callback.onError("Backend did not return a lobby ID.");
+                    return;
+                }
+                getLobby(lobbyId, callback);
+            }
+
+            @Override
+            public void onError(@NonNull Exception e) {
+                callback.onError(getMessageOrDefault(e, "Failed to join lobby."));
+            }
+        });
+    }
+
     public void getLobby(@NonNull String lobbyCode,
                          @NonNull final LobbyCallback callback) {
         remoteDataSource.fetchLobby(lobbyCode, new LobbyRemoteDataSource.LobbyReadCallback() {
@@ -59,33 +82,11 @@ public class LobbyRepository {
         });
     }
 
-    /**
-     * Updates an existing lobby.
-     */
-    public void updateLobby(@NonNull String lobbyCode,
-                            @NonNull Lobby lobby,
-                            @NonNull final LobbyCallback callback) {
-        remoteDataSource.updateLobby(lobbyCode, lobby, new LobbyRemoteDataSource.LobbyWriteCallback() {
-            @Override
-            public void onSuccess() {
-                callback.onSuccess(lobby);
-            }
-
-            @Override
-            public void onError(@NonNull String errorMessage) {
-                callback.onError(errorMessage);
-            }
-        });
-    }
-
-    /**
-     * Updates only one player's ready flag without overwriting the full lobby.
-     */
-    public void updatePlayerReady(@NonNull String lobbyCode,
-                                  @NonNull String playerId,
-                                  boolean ready,
-                                  @NonNull final SimpleCallback callback) {
-        remoteDataSource.updatePlayerReady(lobbyCode, playerId, ready, new LobbyRemoteDataSource.LobbyWriteCallback() {
+    public void setPlayerReady(@NonNull String lobbyCode,
+                               @NonNull String userId,
+                               boolean ready,
+                               @NonNull final SimpleCallback callback) {
+        remoteDataSource.updatePlayerReady(lobbyCode, userId, ready, new LobbyRemoteDataSource.LobbyWriteCallback() {
             @Override
             public void onSuccess() {
                 callback.onSuccess();
@@ -98,46 +99,21 @@ public class LobbyRepository {
         });
     }
 
-    /**
-     * Updates every player's ready flag without replacing the full lobby snapshot.
-     */
-    public void updateAllPlayersReady(@NonNull String lobbyCode,
-                                      boolean ready,
-                                      @NonNull final SimpleCallback callback) {
-        remoteDataSource.updateAllPlayersReady(lobbyCode, ready, new LobbyRemoteDataSource.LobbyWriteCallback() {
+    public void startGame(@NonNull String lobbyCode,
+                          @NonNull final SimpleCallback callback) {
+        functionsRemoteDataSource.callStartGame(lobbyCode, new FunctionsRemoteDataSource.FunctionCallback() {
             @Override
-            public void onSuccess() {
+            public void onSuccess(@NonNull Map<String, Object> result) {
                 callback.onSuccess();
             }
 
             @Override
-            public void onError(@NonNull String errorMessage) {
-                callback.onError(errorMessage);
+            public void onError(@NonNull Exception e) {
+                callback.onError(getMessageOrDefault(e, "Failed to start game."));
             }
         });
     }
 
-    /**
-     * Deletes a lobby.
-     */
-    public void deleteLobby(@NonNull String lobbyCode,
-                            @NonNull final SimpleCallback callback) {
-        remoteDataSource.deleteLobby(lobbyCode, new LobbyRemoteDataSource.LobbyWriteCallback() {
-            @Override
-            public void onSuccess() {
-                callback.onSuccess();
-            }
-
-            @Override
-            public void onError(@NonNull String errorMessage) {
-                callback.onError(errorMessage);
-            }
-        });
-    }
-
-    /**
-     * Starts listening to a lobby in real time.
-     */
     @NonNull
     public ValueEventListener observeLobby(@NonNull String lobbyCode,
                                            @NonNull final LobbyCallback callback) {
@@ -154,9 +130,6 @@ public class LobbyRepository {
         });
     }
 
-    /**
-     * Stops listening to a lobby in real time.
-     */
     public void removeLobbyObserver(@NonNull String lobbyCode,
                                     @Nullable ValueEventListener listener) {
         remoteDataSource.removeLobbyListener(lobbyCode, listener);
@@ -170,5 +143,17 @@ public class LobbyRepository {
     public interface SimpleCallback {
         void onSuccess();
         void onError(@NonNull String errorMessage);
+    }
+
+    @Nullable
+    private String getString(@Nullable Object value) {
+        return value instanceof String ? (String) value : null;
+    }
+
+    @NonNull
+    private String getMessageOrDefault(@Nullable Exception e, @NonNull String defaultMessage) {
+        return e != null && e.getMessage() != null && !e.getMessage().trim().isEmpty()
+                ? e.getMessage()
+                : defaultMessage;
     }
 }

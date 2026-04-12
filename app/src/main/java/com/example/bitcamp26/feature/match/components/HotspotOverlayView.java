@@ -18,7 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Simple custom overlay view that draws hotspot circles and labels.
+ * Simple custom overlay view that draws hotspot square bounds and labels.
  *
  * This version is screen-coordinate based. The caller is expected to convert
  * map coordinates into on-screen x/y positions before passing them in.
@@ -113,7 +113,7 @@ public class HotspotOverlayView extends View {
     }
 
     /**
-     * Sets the minimum circle radius in pixels.
+     * Sets the minimum hotspot half-size in pixels.
      */
     public void setMinimumRadiusPx(float minimumRadiusPx) {
         this.minimumRadiusPx = Math.max(0f, minimumRadiusPx);
@@ -133,20 +133,22 @@ public class HotspotOverlayView extends View {
                 continue;
             }
 
-            float radius = Math.max(minimumRadiusPx, hotspot.radiusPx);
+            float halfSize = Math.max(minimumRadiusPx, hotspot.radiusPx);
             boolean active = hotspot.active;
 
-            canvas.drawCircle(
-                    hotspot.centerXPx,
-                    hotspot.centerYPx,
-                    radius,
+            canvas.drawRect(
+                    hotspot.centerXPx - halfSize,
+                    hotspot.centerYPx - halfSize,
+                    hotspot.centerXPx + halfSize,
+                    hotspot.centerYPx + halfSize,
                     active ? activeFillPaint : inactiveFillPaint
             );
 
-            canvas.drawCircle(
-                    hotspot.centerXPx,
-                    hotspot.centerYPx,
-                    radius,
+            canvas.drawRect(
+                    hotspot.centerXPx - halfSize,
+                    hotspot.centerYPx - halfSize,
+                    hotspot.centerXPx + halfSize,
+                    hotspot.centerYPx + halfSize,
                     active ? activeStrokePaint : inactiveStrokePaint
             );
 
@@ -154,7 +156,7 @@ public class HotspotOverlayView extends View {
                 canvas.drawText(
                         hotspot.label,
                         hotspot.centerXPx,
-                        hotspot.centerYPx + radius + dpToPx(16),
+                        hotspot.centerYPx + halfSize + dpToPx(16),
                         labelPaint
                 );
             }

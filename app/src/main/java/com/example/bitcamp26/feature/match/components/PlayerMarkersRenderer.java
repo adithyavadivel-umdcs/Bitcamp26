@@ -114,7 +114,7 @@ public class PlayerMarkersRenderer {
                     return true;
                 }
 
-                if (player.getActivePowerup() != null && player.getActivePowerup().name().equals("HIDER_INVISIBILITY")) {
+                if (player.getActivePowerup() != null && player.getActivePowerup().isHiderVisionReduction()) {
                     return false;
                 }
 

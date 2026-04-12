@@ -135,8 +135,8 @@ public class MatchFragment extends Fragment {
         submitLocationButton.setOnClickListener(v -> submitLocation());
         claimHotspotButton.setOnClickListener(v -> claimHotspot());
         submitCatchCodeButton.setOnClickListener(v -> submitCatchCode());
-        useHiderPowerupButton.setOnClickListener(v -> usePowerup(PowerupType.HIDER_INVISIBILITY));
-        useSeekerPowerupButton.setOnClickListener(v -> usePowerup(PowerupType.SEEKER_REVEAL_ALL));
+        useHiderPowerupButton.setOnClickListener(v -> usePowerup(PowerupType.HIDER_VISION_REDUCTION));
+        useSeekerPowerupButton.setOnClickListener(v -> usePowerup(PowerupType.SEEKER_MINIMAP_BOOST));
     }
 
     private void bindObservers() {
@@ -330,7 +330,7 @@ public class MatchFragment extends Fragment {
                 state.getPlayers(),
                 currentPlayer != null ? currentPlayer.getId() : null,
                 currentPlayer != null ? currentPlayer.getRole() : null,
-                shouldRevealAllHiders(currentPlayer),
+                hasExpandedSeekerVision(currentPlayer),
                 true
         );
 
@@ -348,10 +348,11 @@ public class MatchFragment extends Fragment {
         mapViewContainer.setPlaceholderText(placeholder.toString());
     }
 
-    private boolean shouldRevealAllHiders(@Nullable Player player) {
+    private boolean hasExpandedSeekerVision(@Nullable Player player) {
         return player != null
                 && player.getRole() == PlayerRole.SEEKER
-                && player.getActivePowerup() == PowerupType.SEEKER_REVEAL_ALL;
+                && player.getActivePowerup() != null
+                && player.getActivePowerup().isSeekerMinimapBoost();
     }
 
     private void updateBannerForGameState(boolean isFinished) {
