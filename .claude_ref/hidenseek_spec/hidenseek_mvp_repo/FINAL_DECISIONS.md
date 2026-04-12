@@ -1,0 +1,31 @@
+# Final Decisions Locked
+
+- Android first
+- Foreground-only gameplay in MVP
+- Invite-code lobbies only
+- No friend-of-friend feature
+- No public discovery
+- No same-building auto-catch
+- No image system
+- No voting system
+- No computer vision
+- Code-based catch system
+- Seeker can only eliminate hiders by entering the correct 6-digit code while that hider is catch-eligible
+- Multiple hotspots
+- Dwell-based per-player hotspot rewards
+- Multiple players may earn from the same hotspot at the same time
+- Hotspot progress resets immediately on exit
+- Hotspot rewards use a 120-second personal cooldown
+- Square play area instead of circular bounds
+- Square shrinks every 120 seconds
+- Each shrink removes 10 percent of the original half-width
+- Reaching the 20 percent floor with surviving hiders is a hider win
+- Square minimap centered on the local player
+- Hiders only see seeker when seeker falls inside the hider's current minimap window
+- Two powerups only
+- Seeker powerup doubles minimap width and height
+- Hider powerup reduces seeker-specific visibility for that hider to 0.6x
+- Local step counting only
+- Level display only, no cosmetics backend
+- Rally point via Google Maps intent
+- Firebase Realtime Database stays
