@@ -140,18 +140,21 @@ public class MapManager implements OnMapReadyCallback {
         LatLng southEast = new LatLng(lat - latDelta, lng + lngDelta);
         LatLng southWest = new LatLng(lat - latDelta, lng - lngDelta);
 
+        // Hole (Counter-Clockwise winding to ensure subtraction works on all hardware)
         List<LatLng> hole = new ArrayList<>();
         hole.add(northWest);
-        hole.add(northEast);
-        hole.add(southEast);
         hole.add(southWest);
+        hole.add(southEast);
+        hole.add(northEast);
+        hole.add(northWest); // Close loop
 
-        // World-spanning outer ring to create the mask effect
+        // World-spanning outer ring (Clockwise winding)
         List<LatLng> world = new ArrayList<>();
         world.add(new LatLng(85, -180));
         world.add(new LatLng(85, 180));
         world.add(new LatLng(-85, 180));
         world.add(new LatLng(-85, -180));
+        world.add(new LatLng(85, -180)); // Close loop
 
         if (boundaryMask == null) {
             boundaryMask = googleMap.addPolygon(new com.google.android.gms.maps.model.PolygonOptions()
@@ -162,6 +165,7 @@ public class MapManager implements OnMapReadyCallback {
                     .strokeWidth(BOUNDARY_STROKE_WIDTH)
                     .zIndex(100f));
         } else {
+            // Update the polygon hole
             List<List<LatLng>> holes = new ArrayList<>();
             holes.add(hole);
             boundaryMask.setHoles(holes);

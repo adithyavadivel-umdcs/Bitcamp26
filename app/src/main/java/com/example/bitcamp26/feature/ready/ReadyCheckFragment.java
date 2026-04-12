@@ -1,6 +1,8 @@
 
 package com.example.bitcamp26.feature.ready;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -10,8 +12,11 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 
 import com.example.bitcamp26.core.model.GameState;
@@ -50,6 +55,7 @@ public class ReadyCheckFragment extends Fragment {
 
     private LocationRepository locationRepository;
     private PlayerLocation lastKnownLocation;
+    private ActivityResultLauncher<String[]> requestPermissionLauncher;
 
     private Lobby currentLobby;
     private String currentPlayerId;
@@ -58,6 +64,21 @@ public class ReadyCheckFragment extends Fragment {
 
     public ReadyCheckFragment() {
         // Required empty public constructor
+    }
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        requestPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestMultiplePermissions(),
+                result -> {
+                    if (Boolean.TRUE.equals(result.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false))) {
+                        startTrackingLocation();
+                    } else {
+                        showToast("Location permission is required to center the game zone.");
+                    }
+                }
+        );
     }
 
     @Nullable
@@ -74,7 +95,7 @@ public class ReadyCheckFragment extends Fragment {
     @Override
     public void onResume() {
         super.onResume();
-        startTrackingLocation();
+        checkAndRequestLocationPermission();
     }
 
     @Override
@@ -85,8 +106,36 @@ public class ReadyCheckFragment extends Fragment {
         }
     }
 
+    private void checkAndRequestLocationPermission() {
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            startTrackingLocation();
+        } else {
+            requestPermissionLauncher.launch(new String[]{
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+            });
+        }
+    }
+
     private void startTrackingLocation() {
         String uid = currentPlayerId != null ? currentPlayerId : "local_player";
+        
+        // Fallback: Try to get last known location immediately in case stream is slow
+        locationRepository.getLastKnownLocation(new LocationRepository.OneTimeLocationCallback() {
+            @Override
+            public void onSuccess(@NonNull android.location.Location location) {
+                if (lastKnownLocation == null) {
+                    lastKnownLocation = new PlayerLocation(uid, location.getLatitude(), location.getLongitude(), location.getTime());
+                }
+            }
+
+            @Override
+            public void onError(@NonNull String errorMessage) {
+                // Ignore, will wait for stream
+            }
+        });
+
         locationRepository.startLocationUpdates(uid, new LocationRepository.LocationUpdateCallback() {
             @Override
             public void onLocationUpdate(@NonNull PlayerLocation location) {
@@ -95,7 +144,7 @@ public class ReadyCheckFragment extends Fragment {
 
             @Override
             public void onError(@NonNull String errorMessage) {
-                // Ignore background errors, handled during startMatchIfPossible
+                // Ignore background errors
             }
         });
     }
@@ -202,13 +251,6 @@ public class ReadyCheckFragment extends Fragment {
             return;
         }
 
-        // Ensure we have a valid location before starting the zone
-        if (lastKnownLocation == null) {
-            showStatus("Waiting for GPS fix...");
-            showToast("Cannot start match without a valid GPS location.");
-            return;
-        }
-
         currentLobby.setStarted(true);
         showStatus("All players ready. Match can start now.");
         refreshUi();
@@ -240,15 +282,38 @@ public class ReadyCheckFragment extends Fragment {
         }
         state.setEndsAt(now + durationMillis);
 
-        // Initialize boundary center at THIS user's real-time location
+        // Boundary Center Fallback Logic:
+        // 1. Try real-time GPS (lastKnownLocation)
+        // 2. Try the current player's last known coordinates from the lobby
+        // 3. Try the host's (first player) coordinates from the lobby
+        // 4. Absolute fallback to UMD
+        
+        double centerLat = 0;
+        double centerLng = 0;
+
         if (lastKnownLocation != null) {
-            state.setBoundaryCenterLat(lastKnownLocation.getLatitude());
-            state.setBoundaryCenterLng(lastKnownLocation.getLongitude());
+            centerLat = lastKnownLocation.getLatitude();
+            centerLng = lastKnownLocation.getLongitude();
         } else {
-            // Extreme fallback if GPS fails last second
-            state.setBoundaryCenterLat(38.9869);
-            state.setBoundaryCenterLng(-76.9426);
+            Player me = findCurrentPlayer();
+            if (me != null && (me.getLatitude() != 0 || me.getLongitude() != 0)) {
+                centerLat = me.getLatitude();
+                centerLng = me.getLongitude();
+            } else if (!lobby.getPlayers().isEmpty()) {
+                Player host = lobby.getPlayers().get(0);
+                centerLat = host.getLatitude();
+                centerLng = host.getLongitude();
+            }
         }
+
+        // If still nothing (or ocean), use UMD
+        if (centerLat == 0 && centerLng == 0) {
+            centerLat = 38.9869;
+            centerLng = -76.9426;
+        }
+
+        state.setBoundaryCenterLat(centerLat);
+        state.setBoundaryCenterLng(centerLng);
         state.setBoundaryRadiusMeters(3218); // 2 miles in meters
 
         // Add some sample hotspots near a default location if none exist
