@@ -1,4 +1,3 @@
-
 package com.example.bitcamp26.feature.ready;
 
 import android.os.Bundle;
@@ -13,20 +12,24 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+import androidx.lifecycle.ViewModelProvider;
 
 import com.example.bitcamp26.R;
 import com.example.bitcamp26.core.model.Lobby;
 import com.example.bitcamp26.core.model.Player;
-import com.example.bitcamp26.core.model.PlayerRole;
 import com.example.bitcamp26.core.util.TimeUitls;
+import com.example.bitcamp26.navigation.AppNavigator;
+import com.example.bitcamp26.ui.MainActivity;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Fragment that represents a simple ready-check screen before a match starts.
+ * Ready-check screen backed by realtime lobby observation.
  */
 public class ReadyCheckFragment extends Fragment {
+
+    private ReadyCheckViewModel viewModel;
 
     private TextView titleTextView;
     private TextView lobbySummaryTextView;
@@ -44,9 +47,9 @@ public class ReadyCheckFragment extends Fragment {
     private String currentPlayerId;
     private boolean currentPlayerReady;
     private long readyCheckOpenedAt;
+    private boolean navigatedToMatch;
 
     public ReadyCheckFragment() {
-        // Required empty public constructor
     }
 
     @Nullable
@@ -54,8 +57,8 @@ public class ReadyCheckFragment extends Fragment {
     public View onCreateView(@NonNull LayoutInflater inflater,
                              @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
+        viewModel = new ViewModelProvider(this).get(ReadyCheckViewModel.class);
         readyCheckOpenedAt = TimeUitls.nowMillis();
-        seedPlaceholderLobbyIfNeeded();
         return inflater.inflate(R.layout.fragment_ready_check, container, false);
     }
 
@@ -75,22 +78,37 @@ public class ReadyCheckFragment extends Fragment {
         statusTextView = view.findViewById(R.id.textReadyStatus);
 
         bindListeners();
+        bindObservers();
+
+        if (currentLobby != null) {
+            viewModel.setLobby(currentLobby);
+            if (currentLobby.getCode() != null) {
+                viewModel.observeLobby(currentLobby.getCode());
+            }
+        }
+        if (currentPlayerId != null) {
+            viewModel.setCurrentPlayerId(currentPlayerId);
+        }
+
         refreshUi();
     }
 
-    /**
-     * Allows another part of the app to inject the current lobby state.
-     */
     public void setLobby(@Nullable Lobby lobby) {
         this.currentLobby = lobby;
+        if (viewModel != null) {
+            viewModel.setLobby(lobby);
+            if (lobby != null && lobby.getCode() != null) {
+                viewModel.observeLobby(lobby.getCode());
+            }
+        }
         refreshUi();
     }
 
-    /**
-     * Allows another part of the app to identify the current player.
-     */
     public void setCurrentPlayerId(@Nullable String currentPlayerId) {
         this.currentPlayerId = currentPlayerId;
+        if (viewModel != null) {
+            viewModel.setCurrentPlayerId(currentPlayerId);
+        }
         syncCurrentPlayerReadyFromLobby();
         refreshUi();
     }
@@ -106,65 +124,54 @@ public class ReadyCheckFragment extends Fragment {
     }
 
     private void bindListeners() {
-        toggleReadyButton.setOnClickListener(v -> toggleCurrentPlayerReady());
-        markAllReadyButton.setOnClickListener(v -> markEveryoneReadyForDemo());
-        startMatchButton.setOnClickListener(v -> startMatchIfPossible());
+        toggleReadyButton.setOnClickListener(v -> viewModel.toggleCurrentPlayerReady());
+        markAllReadyButton.setOnClickListener(v -> viewModel.markEveryoneReady());
+        startMatchButton.setOnClickListener(v -> viewModel.startMatch());
     }
 
-    private void toggleCurrentPlayerReady() {
-        if (currentLobby == null) {
-            showStatus("Cannot update readiness because the lobby is missing.");
-            return;
-        }
-
-        Player currentPlayer = findCurrentPlayer();
-        if (currentPlayer == null) {
-            showStatus("Current player was not found in the lobby.");
-            return;
-        }
-
-        currentPlayerReady = !currentPlayerReady;
-        applyReadyStateToPlayer(currentPlayer, currentPlayerReady);
-
-        showStatus(currentPlayerReady
-                ? "You are marked ready."
-                : "You are marked not ready.");
-        refreshUi();
-    }
-
-    private void markEveryoneReadyForDemo() {
-        if (currentLobby == null || currentLobby.getPlayers() == null) {
-            showStatus("No lobby players available to update.");
-            return;
-        }
-
-        for (Player player : currentLobby.getPlayers()) {
-            if (player == null) {
-                continue;
+    private void bindObservers() {
+        viewModel.getCurrentLobby().observe(getViewLifecycleOwner(), lobby -> {
+            currentLobby = lobby;
+            syncCurrentPlayerReadyFromLobby();
+            refreshUi();
+            if (!navigatedToMatch && lobby != null && lobby.isStarted()) {
+                navigatedToMatch = true;
+                navigateToMatch();
             }
-            applyReadyStateToPlayer(player, true);
-        }
+        });
 
-        currentPlayerReady = true;
-        showStatus("All players marked ready for demo purposes.");
-        refreshUi();
-    }
+        viewModel.getCurrentPlayerId().observe(getViewLifecycleOwner(), playerId -> {
+            currentPlayerId = playerId;
+            syncCurrentPlayerReadyFromLobby();
+            refreshUi();
+        });
 
-    private void startMatchIfPossible() {
-        if (currentLobby == null) {
-            showStatus("Lobby missing. Cannot start the match.");
-            return;
-        }
+        viewModel.getCurrentPlayerReady().observe(getViewLifecycleOwner(), ready -> {
+            currentPlayerReady = Boolean.TRUE.equals(ready);
+            refreshUi();
+        });
 
-        if (!areAllPlayersReady()) {
-            showStatus("Not everyone is ready yet.");
-            return;
-        }
+        viewModel.getLoading().observe(getViewLifecycleOwner(), isLoading -> {
+            boolean loading = Boolean.TRUE.equals(isLoading);
+            progressBar.setVisibility(loading ? View.VISIBLE : View.GONE);
+            refreshUi();
+        });
 
-        currentLobby.setStarted(true);
-        showStatus("All players ready. Match can start now.");
-        refreshUi();
-        showToast("Ready check complete. Start the match.");
+        viewModel.getStatusMessage().observe(getViewLifecycleOwner(), message -> {
+            if (message == null || message.trim().isEmpty()) {
+                return;
+            }
+            showStatus(message);
+            showToast(message);
+        });
+
+        viewModel.getErrorMessage().observe(getViewLifecycleOwner(), message -> {
+            if (message == null || message.trim().isEmpty()) {
+                return;
+            }
+            showStatus(message);
+            showToast(message);
+        });
     }
 
     private void refreshUi() {
@@ -246,10 +253,10 @@ public class ReadyCheckFragment extends Fragment {
             builder.append("\n   Role: ")
                     .append(player.getRole() != null ? player.getRole().name() : "UNKNOWN")
                     .append("\n   Ready: ")
-                    .append(isPlayerReady(player) ? "Yes" : "No");
+                    .append(player.isReady() ? "Yes" : "No");
 
             if (player.isCaught()) {
-                builder.append("\n   Match State: Caught");
+                builder.append("\n   Match State: Eliminated");
             }
 
             if (i < players.size() - 1) {
@@ -264,12 +271,13 @@ public class ReadyCheckFragment extends Fragment {
         boolean hasCurrentPlayer = findCurrentPlayer() != null;
         boolean allReady = areAllPlayersReady();
         boolean started = currentLobby != null && currentLobby.isStarted();
+        boolean loading = progressBar.getVisibility() == View.VISIBLE;
 
-        toggleReadyButton.setEnabled(hasCurrentPlayer && !started);
+        toggleReadyButton.setEnabled(hasCurrentPlayer && !started && !loading);
         toggleReadyButton.setText(currentPlayerReady ? "Mark Not Ready" : "Mark Ready");
 
-        markAllReadyButton.setEnabled(!started);
-        startMatchButton.setEnabled(allReady && !started);
+        markAllReadyButton.setEnabled(false);
+        startMatchButton.setEnabled(allReady && !started && !loading && isCurrentPlayerHost());
         startMatchButton.setText(started ? "Match Started" : "Start Match");
     }
 
@@ -292,20 +300,23 @@ public class ReadyCheckFragment extends Fragment {
         }
 
         for (Player player : safePlayers()) {
-            if (player == null || player.getId() == null) {
-                continue;
-            }
-            if (currentPlayerId.equals(player.getId())) {
+            if (player != null && currentPlayerId.equals(player.getId())) {
                 return player;
             }
         }
         return null;
     }
 
+    private boolean isCurrentPlayerHost() {
+        return currentLobby != null
+                && currentLobby.getHostId() != null
+                && currentLobby.getHostId().equals(currentPlayerId);
+    }
+
     private int countReadyPlayers() {
         int count = 0;
         for (Player player : safePlayers()) {
-            if (player != null && isPlayerReady(player)) {
+            if (player != null && player.isReady()) {
                 count++;
             }
         }
@@ -319,39 +330,11 @@ public class ReadyCheckFragment extends Fragment {
         }
 
         for (Player player : players) {
-            if (player == null || !isPlayerReady(player)) {
+            if (player == null || !player.isReady()) {
                 return false;
             }
         }
         return true;
-    }
-
-    /**
-     * MVP/local ready-state rule.
-     *
-     * Since the Player model may not yet have a dedicated ready boolean, this method
-     * uses the player's active powerup timestamps/fields only if you later want to swap
-     * to a model-backed solution. For now, we derive readiness from catch-code presence
-     * plus current-player local toggle only for the active user, and treat everyone else
-     * as not ready unless marked through the demo helper.
-     *
-     * To keep this fragment stable without forcing model edits, we store readiness in the
-     * player's displayName suffix: "[READY]". That is not ideal for production, but it is
-     * safe for MVP/local testing until the Player model gets a dedicated field.
-     */
-    private boolean isPlayerReady(@NonNull Player player) {
-        String displayName = player.getDisplayName();
-        return displayName != null && displayName.contains("[READY]");
-    }
-
-    private void applyReadyStateToPlayer(@NonNull Player player, boolean ready) {
-        String name = player.getDisplayName();
-        if (name == null || name.trim().isEmpty()) {
-            name = "Player";
-        }
-
-        String cleaned = name.replace("[READY]", "").trim();
-        player.setDisplayName(ready ? cleaned + " [READY]" : cleaned);
     }
 
     @NonNull
@@ -364,54 +347,7 @@ public class ReadyCheckFragment extends Fragment {
 
     private void syncCurrentPlayerReadyFromLobby() {
         Player player = findCurrentPlayer();
-        currentPlayerReady = player != null && isPlayerReady(player);
-    }
-
-    /**
-     * Creates placeholder lobby/player data so the screen is immediately testable.
-     */
-    private void seedPlaceholderLobbyIfNeeded() {
-        if (currentLobby != null) {
-            syncCurrentPlayerReadyFromLobby();
-            return;
-        }
-
-        Lobby lobby = new Lobby();
-        lobby.setCode("READY1");
-        lobby.setStarted(false);
-        lobby.setMaxPlayers(4);
-        lobby.setMatchDurationSeconds(300);
-
-        List<Player> players = new ArrayList<>();
-
-        Player p1 = new Player();
-        p1.setId("player_host");
-        p1.setDisplayName("Host Player [READY]");
-        p1.setRole(PlayerRole.SEEKER);
-        p1.setCaught(false);
-
-        Player p2 = new Player();
-        p2.setId("player_me");
-        p2.setDisplayName("My Player");
-        p2.setRole(PlayerRole.HIDER);
-        p2.setCaught(false);
-
-        Player p3 = new Player();
-        p3.setId("player_3");
-        p3.setDisplayName("Teammate");
-        p3.setRole(PlayerRole.HIDER);
-        p3.setCaught(false);
-
-        players.add(p1);
-        players.add(p2);
-        players.add(p3);
-
-        lobby.setPlayers(players);
-        lobby.setPlayerCount(players.size());
-
-        currentLobby = lobby;
-        currentPlayerId = "player_me";
-        syncCurrentPlayerReadyFromLobby();
+        currentPlayerReady = player != null && player.isReady();
     }
 
     private void showStatus(@NonNull String message) {
@@ -426,5 +362,19 @@ public class ReadyCheckFragment extends Fragment {
             return;
         }
         Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
+    }
+
+    private void navigateToMatch() {
+        if (!isAdded()) {
+            return;
+        }
+        if (!(requireActivity() instanceof MainActivity)) {
+            return;
+        }
+        AppNavigator navigator = ((MainActivity) requireActivity()).getAppNavigator();
+        if (navigator == null) {
+            return;
+        }
+        navigator.showMatch(null, currentPlayerId, true);
     }
 }

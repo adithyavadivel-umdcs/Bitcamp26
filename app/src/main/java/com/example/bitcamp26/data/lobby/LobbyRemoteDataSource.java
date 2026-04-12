@@ -4,14 +4,14 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.example.bitcamp26.core.model.Lobby;
-import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
 /**
- * Remote data source for reading and writing lobby data in Firebase Realtime Database.
+ * RTDB data source for observing backend-authoritative lobby state and writing
+ * player-owned fields such as ready.
  */
 public class LobbyRemoteDataSource {
 
@@ -28,43 +28,6 @@ public class LobbyRemoteDataSource {
         this.lobbiesRef = lobbiesRef;
     }
 
-    /**
-     * Creates or overwrites a lobby at /lobbies/{lobbyCode}.
-     */
-    public void createLobby(@NonNull String lobbyCode,
-                            @NonNull Lobby lobby,
-                            @NonNull final LobbyWriteCallback callback) {
-        android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
-        boolean[] completed = {false};
-
-        Runnable timeoutRunnable = () -> {
-            if (!completed[0]) {
-                completed[0] = true;
-                callback.onError("Connection timed out. Check your network and try again.");
-            }
-        };
-        handler.postDelayed(timeoutRunnable, WRITE_TIMEOUT_MS);
-
-        lobbiesRef.child(lobbyCode).setValue(lobby)
-                .addOnSuccessListener(unused -> {
-                    if (!completed[0]) {
-                        completed[0] = true;
-                        handler.removeCallbacks(timeoutRunnable);
-                        callback.onSuccess();
-                    }
-                })
-                .addOnFailureListener(e -> {
-                    if (!completed[0]) {
-                        completed[0] = true;
-                        handler.removeCallbacks(timeoutRunnable);
-                        callback.onError(getMessageOrDefault(e, "Failed to create lobby."));
-                    }
-                });
-    }
-
-    /**
-     * Reads a lobby once from Firebase.
-     */
     public void fetchLobby(@NonNull String lobbyCode,
                            @NonNull final LobbyReadCallback callback) {
         lobbiesRef.child(lobbyCode)
@@ -74,24 +37,15 @@ public class LobbyRemoteDataSource {
                         callback.onError("Lobby not found.");
                         return;
                     }
-
-                    Lobby lobby = snapshot.getValue(Lobby.class);
-                    if (lobby == null) {
-                        callback.onError("Lobby data is empty or malformed.");
-                        return;
-                    }
-
-                    callback.onSuccess(lobby);
+                    callback.onSuccess(LobbySnapshotMapper.fromSnapshot(snapshot));
                 })
                 .addOnFailureListener(e -> callback.onError(getMessageOrDefault(e, "Failed to fetch lobby.")));
     }
 
-    /**
-     * Updates an existing lobby using setValue.
-     */
-    public void updateLobby(@NonNull String lobbyCode,
-                            @NonNull Lobby lobby,
-                            @NonNull final LobbyWriteCallback callback) {
+    public void updatePlayerReady(@NonNull String lobbyCode,
+                                  @NonNull String userId,
+                                  boolean ready,
+                                  @NonNull final LobbyWriteCallback callback) {
         android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
         boolean[] completed = {false};
 
@@ -103,7 +57,11 @@ public class LobbyRemoteDataSource {
         };
         handler.postDelayed(timeoutRunnable, WRITE_TIMEOUT_MS);
 
-        lobbiesRef.child(lobbyCode).setValue(lobby)
+        lobbiesRef.child(lobbyCode)
+                .child("players")
+                .child(userId)
+                .child("ready")
+                .setValue(ready)
                 .addOnSuccessListener(unused -> {
                     if (!completed[0]) {
                         completed[0] = true;
@@ -115,43 +73,23 @@ public class LobbyRemoteDataSource {
                     if (!completed[0]) {
                         completed[0] = true;
                         handler.removeCallbacks(timeoutRunnable);
-                        callback.onError(getMessageOrDefault(e, "Failed to update lobby."));
+                        callback.onError(getMessageOrDefault(e, "Failed to update ready state."));
                     }
                 });
     }
 
-    /**
-     * Deletes a lobby at /lobbies/{lobbyCode}.
-     */
-    public void deleteLobby(@NonNull String lobbyCode,
-                            @NonNull final LobbyWriteCallback callback) {
-        lobbiesRef.child(lobbyCode).removeValue()
-                .addOnSuccessListener(unused -> callback.onSuccess())
-                .addOnFailureListener(e -> callback.onError(getMessageOrDefault(e, "Failed to delete lobby.")));
-    }
-
-    /**
-     * Attaches a realtime listener to a single lobby.
-     * Remember to pass the returned listener to removeLobbyListener when no longer needed.
-     */
     @NonNull
     public ValueEventListener listenToLobby(@NonNull String lobbyCode,
                                             @NonNull final LobbyReadCallback callback) {
         ValueEventListener listener = new ValueEventListener() {
             @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
+            public void onDataChange(@NonNull com.google.firebase.database.DataSnapshot snapshot) {
                 if (!snapshot.exists()) {
                     callback.onError("Lobby not found.");
                     return;
                 }
 
-                Lobby lobby = snapshot.getValue(Lobby.class);
-                if (lobby == null) {
-                    callback.onError("Lobby data is empty or malformed.");
-                    return;
-                }
-
-                callback.onSuccess(lobby);
+                callback.onSuccess(LobbySnapshotMapper.fromSnapshot(snapshot));
             }
 
             @Override
@@ -164,9 +102,6 @@ public class LobbyRemoteDataSource {
         return listener;
     }
 
-    /**
-     * Removes a previously attached realtime listener.
-     */
     public void removeLobbyListener(@NonNull String lobbyCode,
                                     @Nullable ValueEventListener listener) {
         if (listener != null) {
