@@ -1,4 +1,3 @@
-
 package com.example.bitcamp26.feature.match;
 
 import android.os.Bundle;
@@ -21,29 +20,15 @@ import com.example.bitcamp26.core.model.GameState;
 import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.model.PlayerRole;
 import com.example.bitcamp26.core.model.PowerupType;
+import com.example.bitcamp26.core.util.ShrinkCountdownManager;
 import com.example.bitcamp26.core.util.TimeUitls;
+import com.example.bitcamp26.core.util.VisionRadiusCalculator;
 import com.example.bitcamp26.feature.match.components.MapViewContainer;
 import com.example.bitcamp26.feature.match.components.PlayerMarkersRenderer;
 import com.example.bitcamp26.feature.match.components.ShrinkBannerView;
 
 import java.util.List;
 
-/**
- * Fragment that represents the active match screen.
- *
- * UI is defined in fragment_match.xml. This fragment connects to MatchViewModel
- * and exposes a functional match UI:
- *
- * - top shrink/status banner
- * - score and game status text
- * - placeholder map area with hotspot overlay support
- * - player details summary
- * - location submission controls
- * - claim hotspot action
- * - catch-code submission controls
- * - powerup usage controls
- * - realtime status/error output
- */
 public class MatchFragment extends Fragment {
 
     private MatchViewModel viewModel;
@@ -70,9 +55,10 @@ public class MatchFragment extends Fragment {
     private Button useHiderPowerupButton;
     private Button useSeekerPowerupButton;
 
-    public MatchFragment() {
-        // Required empty public constructor
-    }
+    // ── Shrink countdown ──────────────────────────────────────────────────────
+    private ShrinkCountdownManager shrinkCountdownManager;
+
+    public MatchFragment() {}
 
     @Nullable
     @Override
@@ -87,25 +73,24 @@ public class MatchFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        shrinkBannerView = view.findViewById(R.id.shrinkBannerView);
-        scoreTextView = view.findViewById(R.id.textMatchScore);
-        gameFinishedTextView = view.findViewById(R.id.textMatchFinished);
-        mapViewContainer = view.findViewById(R.id.mapViewContainer);
-        playerSummaryTextView = view.findViewById(R.id.textCurrentPlayerSummary);
-        currentPlayerIdInput = view.findViewById(R.id.editCurrentPlayerId);
-        latitudeInput = view.findViewById(R.id.editLatitude);
-        longitudeInput = view.findViewById(R.id.editLongitude);
+        shrinkBannerView         = view.findViewById(R.id.shrinkBannerView);
+        scoreTextView            = view.findViewById(R.id.textMatchScore);
+        gameFinishedTextView     = view.findViewById(R.id.textMatchFinished);
+        mapViewContainer         = view.findViewById(R.id.mapViewContainer);
+        playerSummaryTextView    = view.findViewById(R.id.textCurrentPlayerSummary);
+        currentPlayerIdInput     = view.findViewById(R.id.editCurrentPlayerId);
+        latitudeInput            = view.findViewById(R.id.editLatitude);
+        longitudeInput           = view.findViewById(R.id.editLongitude);
         catchTargetPlayerIdInput = view.findViewById(R.id.editCatchTargetPlayerId);
-        catchCodeInput = view.findViewById(R.id.editCatchCode);
-        submitLocationButton = view.findViewById(R.id.buttonSubmitLocation);
-        claimHotspotButton = view.findViewById(R.id.buttonClaimHotspot);
-        submitCatchCodeButton = view.findViewById(R.id.buttonSubmitCatchCode);
-        useHiderPowerupButton = view.findViewById(R.id.buttonUseHiderPowerup);
-        useSeekerPowerupButton = view.findViewById(R.id.buttonUseSeekerPowerup);
-        progressBar = view.findViewById(R.id.progressMatch);
-        statusTextView = view.findViewById(R.id.textMatchStatus);
+        catchCodeInput           = view.findViewById(R.id.editCatchCode);
+        submitLocationButton     = view.findViewById(R.id.buttonSubmitLocation);
+        claimHotspotButton       = view.findViewById(R.id.buttonClaimHotspot);
+        submitCatchCodeButton    = view.findViewById(R.id.buttonSubmitCatchCode);
+        useHiderPowerupButton    = view.findViewById(R.id.buttonUseHiderPowerup);
+        useSeekerPowerupButton   = view.findViewById(R.id.buttonUseSeekerPowerup);
+        progressBar              = view.findViewById(R.id.progressMatch);
+        statusTextView           = view.findViewById(R.id.textMatchStatus);
 
-        // Initialize banner and map placeholder to match the state set in createContentView.
         shrinkBannerView.bind(
                 "Match Active",
                 "Track players, claim hotspots, and use powerups.",
@@ -115,6 +100,7 @@ public class MatchFragment extends Fragment {
         );
         mapViewContainer.setPlaceholderText("Map placeholder with player/hotspot overlay");
 
+        initShrinkCountdown();
         bindListeners();
         bindObservers();
 
@@ -131,6 +117,74 @@ public class MatchFragment extends Fragment {
         renderCurrentState();
     }
 
+    // ── Shrink countdown setup ────────────────────────────────────────────────
+
+    private void initShrinkCountdown() {
+        shrinkCountdownManager = new ShrinkCountdownManager(new ShrinkCountdownManager.ShrinkListener() {
+            @Override
+            public void onCountdownTick(int pingsRemaining) {
+                if (!isAdded()) return;
+
+                if (pingsRemaining <= 3) {
+                    // Final 3 pings — urgent state
+                    shrinkBannerView.showDangerState(pingsRemaining + " pings");
+                } else if (pingsRemaining <= 5) {
+                    // Mid warning
+                    shrinkBannerView.showWarningState(pingsRemaining + " pings");
+                } else {
+                    // Normal countdown
+                    shrinkBannerView.bind(
+                            "Zone shrinks in",
+                            "Stay inside the safe area",
+                            String.valueOf(pingsRemaining),
+                            calculateShrinkProgress(pingsRemaining),
+                            ShrinkBannerView.BannerState.NORMAL
+                    );
+                }
+            }
+
+            @Override
+            public void onShrinkNow() {
+                if (!isAdded()) return;
+                shrinkBannerView.showDangerState("Shrinking!");
+                // Notify ViewModel so it can call the shrink Cloud Function
+                viewModel.onShrinkTimerFired();
+            }
+        });
+    }
+
+    /**
+     * Call this every time a location ping fires from your location update loop.
+     * This drives the 10→1 countdown shown on the banner.
+     */
+    public void onLocationPingReceived() {
+        if (shrinkCountdownManager != null) {
+            shrinkCountdownManager.onLocationPing();
+        }
+    }
+
+    /** Returns progress percent for the shrink progress bar (10 pings = 0%, 1 ping = 100%). */
+    private int calculateShrinkProgress(int pingsRemaining) {
+        int total = shrinkCountdownManager.getTotalPings(); // 10
+        return (int) (((total - pingsRemaining) / (float) total) * 100);
+    }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (shrinkCountdownManager != null) shrinkCountdownManager.start();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (shrinkCountdownManager != null) shrinkCountdownManager.stop();
+    }
+
+    // ── Listeners ─────────────────────────────────────────────────────────────
+
     private void bindListeners() {
         submitLocationButton.setOnClickListener(v -> submitLocation());
         claimHotspotButton.setOnClickListener(v -> claimHotspot());
@@ -138,6 +192,8 @@ public class MatchFragment extends Fragment {
         useHiderPowerupButton.setOnClickListener(v -> usePowerup(PowerupType.HIDER_INVISIBILITY));
         useSeekerPowerupButton.setOnClickListener(v -> usePowerup(PowerupType.SEEKER_REVEAL_ALL));
     }
+
+    // ── Observers ─────────────────────────────────────────────────────────────
 
     private void bindObservers() {
         viewModel.getLoading().observe(getViewLifecycleOwner(), isLoading -> {
@@ -155,6 +211,10 @@ public class MatchFragment extends Fragment {
             boolean isFinished = Boolean.TRUE.equals(finished);
             gameFinishedTextView.setText("Game Finished: " + (isFinished ? "Yes" : "No"));
             updateBannerForGameState(isFinished);
+            // Stop countdown when game ends
+            if (isFinished && shrinkCountdownManager != null) {
+                shrinkCountdownManager.stop();
+            }
         });
 
         viewModel.getCurrentPlayer().observe(getViewLifecycleOwner(), player -> {
@@ -168,14 +228,14 @@ public class MatchFragment extends Fragment {
         });
 
         viewModel.getInsideHotspot().observe(getViewLifecycleOwner(), inside -> {
-            boolean isInside = Boolean.TRUE.equals(inside);
-            if (isInside) {
+            if (Boolean.TRUE.equals(inside)) {
                 shrinkBannerView.showSuccessState("You are inside an active hotspot.");
             }
         });
 
         viewModel.getClaimableHotspot().observe(getViewLifecycleOwner(), hotspot -> {
-            claimHotspotButton.setEnabled(hotspot != null && progressBar.getVisibility() != View.VISIBLE);
+            claimHotspotButton.setEnabled(
+                    hotspot != null && progressBar.getVisibility() != View.VISIBLE);
         });
 
         viewModel.getStatusMessage().observe(getViewLifecycleOwner(), message -> {
@@ -193,64 +253,54 @@ public class MatchFragment extends Fragment {
         });
     }
 
+    // ── Actions ───────────────────────────────────────────────────────────────
+
     private void submitLocation() {
         String playerId = getTrimmedText(currentPlayerIdInput);
-        Double latitude = parseDouble(latitudeInput);
+        Double latitude  = parseDouble(latitudeInput);
         Double longitude = parseDouble(longitudeInput);
 
-        if (playerId.isEmpty()) {
-            showToast("Enter a current player ID first.");
-            return;
-        }
-
+        if (playerId.isEmpty()) { showToast("Enter a current player ID first."); return; }
         if (latitude == null || longitude == null) {
-            showToast("Enter valid latitude and longitude values.");
-            return;
+            showToast("Enter valid latitude and longitude values."); return;
         }
 
         viewModel.submitLocation(playerId, latitude, longitude);
+
+        // Each location submission = one ping tick for the shrink countdown
+        onLocationPingReceived();
     }
 
     private void claimHotspot() {
         String playerId = getTrimmedText(currentPlayerIdInput);
-        Double latitude = parseDouble(latitudeInput);
+        Double latitude  = parseDouble(latitudeInput);
         Double longitude = parseDouble(longitudeInput);
 
-        if (playerId.isEmpty()) {
-            showToast("Enter a current player ID first.");
-            return;
-        }
-
+        if (playerId.isEmpty()) { showToast("Enter a current player ID first."); return; }
         if (latitude == null || longitude == null) {
-            showToast("Enter valid latitude and longitude values first.");
-            return;
+            showToast("Enter valid latitude and longitude values first."); return;
         }
-
         viewModel.claimHotspot(playerId, latitude, longitude);
     }
 
     private void submitCatchCode() {
         String submittingPlayerId = getTrimmedText(currentPlayerIdInput);
-        String targetPlayerId = getTrimmedText(catchTargetPlayerIdInput);
-        String submittedCode = getTrimmedText(catchCodeInput);
+        String targetPlayerId     = getTrimmedText(catchTargetPlayerIdInput);
+        String submittedCode      = getTrimmedText(catchCodeInput);
 
         if (submittingPlayerId.isEmpty() || targetPlayerId.isEmpty() || submittedCode.isEmpty()) {
-            showToast("Enter submitting player ID, target player ID, and catch code.");
-            return;
+            showToast("Enter submitting player ID, target player ID, and catch code."); return;
         }
-
         viewModel.submitCatchCode(submittingPlayerId, targetPlayerId, submittedCode);
     }
 
     private void usePowerup(@NonNull PowerupType powerupType) {
         String playerId = getTrimmedText(currentPlayerIdInput);
-        if (playerId.isEmpty()) {
-            showToast("Enter a current player ID first.");
-            return;
-        }
-
+        if (playerId.isEmpty()) { showToast("Enter a current player ID first."); return; }
         viewModel.usePowerup(playerId, powerupType);
     }
+
+    // ── Render helpers ────────────────────────────────────────────────────────
 
     private void renderCurrentState() {
         renderGameState(viewModel.getGameStateValue());
@@ -296,21 +346,24 @@ public class MatchFragment extends Fragment {
             return;
         }
 
+        // Get all players for vision calculation
+        GameState state = viewModel.getGameStateValue();
+        List<Player> allPlayers = state != null ? state.getPlayers() : null;
+
         StringBuilder summary = new StringBuilder();
         summary.append("Current Player: ")
-                .append(player.getDisplayName() != null ? player.getDisplayName() : "Player")
-                .append("\nID: ").append(player.getId() != null ? player.getId() : "N/A")
-                .append("\nRole: ").append(player.getRole() != null ? player.getRole().name() : "UNKNOWN")
-                .append("\nCaught: ").append(player.isCaught() ? "Yes" : "No")
-                .append("\nLocation: ")
-                .append(player.getLatitude())
-                .append(", ")
-                .append(player.getLongitude());
+               .append(player.getDisplayName() != null ? player.getDisplayName() : "Player")
+               .append("\nID: ").append(player.getId() != null ? player.getId() : "N/A")
+               .append("\nRole: ").append(player.getRole() != null ? player.getRole().name() : "UNKNOWN")
+               .append("\nCaught: ").append(player.isCaught() ? "Yes" : "No")
+               .append("\nLocation: ").append(player.getLatitude())
+               .append(", ").append(player.getLongitude())
+               // Vision label — shows "Vision: 1x", "Vision: 2x 👁", etc.
+               .append("\n").append(VisionRadiusCalculator.getVisionLabel(player, allPlayers));
 
         if (player.getHeldPowerup() != null) {
             summary.append("\nHeld Powerup: ").append(player.getHeldPowerup().name());
         }
-
         if (player.getActivePowerup() != null) {
             summary.append("\nActive Powerup: ").append(player.getActivePowerup().name());
         }
@@ -321,18 +374,16 @@ public class MatchFragment extends Fragment {
     private void renderPlayerMarkers() {
         GameState state = viewModel.getGameStateValue();
         Player currentPlayer = viewModel.getCurrentPlayerValue();
+        if (state == null) return;
 
-        if (state == null) {
-            return;
-        }
-
-        List<PlayerMarkersRenderer.RenderablePlayerMarker> markers = playerMarkersRenderer.buildMarkers(
-                state.getPlayers(),
-                currentPlayer != null ? currentPlayer.getId() : null,
-                currentPlayer != null ? currentPlayer.getRole() : null,
-                shouldRevealAllHiders(currentPlayer),
-                true
-        );
+        List<PlayerMarkersRenderer.RenderablePlayerMarker> markers =
+                playerMarkersRenderer.buildMarkers(
+                        state.getPlayers(),
+                        currentPlayer != null ? currentPlayer.getId() : null,
+                        currentPlayer != null ? currentPlayer.getRole() : null,
+                        shouldRevealAllHiders(currentPlayer),
+                        true
+                );
 
         StringBuilder placeholder = new StringBuilder("Map placeholder with players: ");
         if (markers.isEmpty()) {
@@ -340,9 +391,7 @@ public class MatchFragment extends Fragment {
         } else {
             for (int i = 0; i < markers.size(); i++) {
                 placeholder.append(markers.get(i).getLabel());
-                if (i < markers.size() - 1) {
-                    placeholder.append(", ");
-                }
+                if (i < markers.size() - 1) placeholder.append(", ");
             }
         }
         mapViewContainer.setPlaceholderText(placeholder.toString());
@@ -365,16 +414,11 @@ public class MatchFragment extends Fragment {
 
     private int calculateProgressPercent(@NonNull GameState state) {
         long startedAt = state.getStartedAt();
-        long endsAt = state.getEndsAt();
-
-        if (startedAt <= 0 || endsAt <= startedAt) {
-            return 0;
-        }
-
-        long total = endsAt - startedAt;
+        long endsAt    = state.getEndsAt();
+        if (startedAt <= 0 || endsAt <= startedAt) return 0;
+        long total   = endsAt - startedAt;
         long elapsed = Math.max(0L, TimeUitls.nowMillis() - startedAt);
-        long clampedElapsed = Math.min(elapsed, total);
-        return (int) ((clampedElapsed * 100L) / total);
+        return (int) ((Math.min(elapsed, total) * 100L) / total);
     }
 
     private void setActionButtonsEnabled(boolean enabled) {
@@ -382,16 +426,13 @@ public class MatchFragment extends Fragment {
         submitCatchCodeButton.setEnabled(enabled);
         useHiderPowerupButton.setEnabled(enabled);
         useSeekerPowerupButton.setEnabled(enabled);
-
-        Boolean hotspotAvailable = viewModel.getClaimableHotspot().getValue() != null;
-        claimHotspotButton.setEnabled(enabled && hotspotAvailable);
+        claimHotspotButton.setEnabled(
+                enabled && viewModel.getClaimableHotspot().getValue() != null);
     }
 
     @NonNull
     private String getTrimmedText(@Nullable EditText editText) {
-        if (editText == null || editText.getText() == null) {
-            return "";
-        }
+        if (editText == null || editText.getText() == null) return "";
         return editText.getText().toString().trim();
     }
 
@@ -399,19 +440,14 @@ public class MatchFragment extends Fragment {
     private Double parseDouble(@Nullable EditText editText) {
         try {
             String text = getTrimmedText(editText);
-            if (text.isEmpty()) {
-                return null;
-            }
-            return Double.parseDouble(text);
+            return text.isEmpty() ? null : Double.parseDouble(text);
         } catch (NumberFormatException e) {
             return null;
         }
     }
 
     private void showToast(@NonNull String message) {
-        if (!isAdded()) {
-            return;
-        }
+        if (!isAdded()) return;
         Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
     }
 }

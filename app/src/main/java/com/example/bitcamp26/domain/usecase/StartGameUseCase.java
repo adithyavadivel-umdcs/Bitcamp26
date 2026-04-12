@@ -12,13 +12,29 @@ import com.example.bitcamp26.core.util.TimeUitls;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 /**
  * Handles the business rules for starting a match from a lobby.
+ *
+ * Seeker assignment is now RANDOMIZED — any player in the lobby
+ * has an equal chance of being selected as seeker. Everyone else
+ * is assigned HIDER.
  */
 public class StartGameUseCase {
 
     private static final int DEFAULT_MATCH_DURATION_SECONDS = 300;
+
+    private final Random random;
+
+    public StartGameUseCase() {
+        this.random = new Random();
+    }
+
+    /** Testable constructor — inject a seeded Random for deterministic tests. */
+    public StartGameUseCase(@NonNull Random random) {
+        this.random = random;
+    }
 
     /**
      * Attempts to start a game using the provided lobby and hotspots.
@@ -38,9 +54,8 @@ public class StartGameUseCase {
             return StartGameResult.failure("The game has already started.");
         }
 
-        if (!hasRequiredRoles(players)) {
-            assignMissingRoles(players);
-        }
+        // Always reassign roles from scratch using random seeker selection
+        assignRolesWithRandomSeeker(players);
 
         GameState gameState = new GameState();
         gameState.setStarted(true);
@@ -54,7 +69,30 @@ public class StartGameUseCase {
         lobby.setStarted(true);
         lobby.setPlayerCount(players.size());
 
-        return StartGameResult.success(lobby, gameState);
+        // Record who was selected as seeker for logging/debugging
+        String seekerId = findSeekerId(players);
+
+        return StartGameResult.success(lobby, gameState, seekerId);
+    }
+
+    /**
+     * Assigns roles randomly: one player becomes SEEKER, all others become HIDER.
+     * If only one player exists they become the seeker (edge case).
+     */
+    public void assignRolesWithRandomSeeker(@NonNull List<Player> players) {
+        // Filter out nulls for safety
+        List<Player> valid = new ArrayList<>();
+        for (Player p : players) {
+            if (p != null) valid.add(p);
+        }
+        if (valid.isEmpty()) return;
+
+        // Pick a random index as seeker
+        int seekerIndex = random.nextInt(valid.size());
+
+        for (int i = 0; i < valid.size(); i++) {
+            valid.get(i).setRole(i == seekerIndex ? PlayerRole.SEEKER : PlayerRole.HIDER);
+        }
     }
 
     /**
@@ -62,99 +100,83 @@ public class StartGameUseCase {
      */
     public boolean hasRequiredRoles(@NonNull List<Player> players) {
         boolean hasSeeker = false;
-        boolean hasHider = false;
-
+        boolean hasHider  = false;
         for (Player player : players) {
-            if (player == null || player.getRole() == null) {
-                continue;
-            }
-
-            if (player.getRole() == PlayerRole.SEEKER) {
-                hasSeeker = true;
-            } else if (player.getRole() == PlayerRole.HIDER) {
-                hasHider = true;
-            }
+            if (player == null || player.getRole() == null) continue;
+            if (player.getRole() == PlayerRole.SEEKER) hasSeeker = true;
+            else if (player.getRole() == PlayerRole.HIDER) hasHider = true;
         }
-
         return hasSeeker && hasHider;
     }
 
     /**
-     * Assigns missing roles using a simple rule: first player is seeker, everyone else is hider.
+     * Legacy method kept for compatibility — use assignRolesWithRandomSeeker instead.
+     * Now delegates to random assignment.
      */
     public void assignMissingRoles(@NonNull List<Player> players) {
-        for (int i = 0; i < players.size(); i++) {
-            Player player = players.get(i);
-            if (player == null) {
-                continue;
-            }
-
-            player.setRole(i == 0 ? PlayerRole.SEEKER : PlayerRole.HIDER);
-        }
+        assignRolesWithRandomSeeker(players);
     }
 
-    /**
-     * Resolves match duration from the lobby or falls back to a default.
-     */
     public long resolveMatchDurationSeconds(@NonNull Lobby lobby) {
         long durationSeconds = lobby.getMatchDurationSeconds();
         return durationSeconds > 0 ? durationSeconds : DEFAULT_MATCH_DURATION_SECONDS;
     }
 
-    /**
-     * Returns a safe copy of hotspot data for the game state.
-     */
     @NonNull
     public List<HotspotState> copyHotspots(@Nullable List<HotspotState> hotspots) {
-        if (hotspots == null || hotspots.isEmpty()) {
-            return new ArrayList<>();
-        }
-
+        if (hotspots == null || hotspots.isEmpty()) return new ArrayList<>();
         return new ArrayList<>(hotspots);
     }
+
+    @Nullable
+    private String findSeekerId(@NonNull List<Player> players) {
+        for (Player p : players) {
+            if (p != null && p.getRole() == PlayerRole.SEEKER) return p.getId();
+        }
+        return null;
+    }
+
+    // ── Result ────────────────────────────────────────────────────────────────
 
     public static final class StartGameResult {
         private final boolean success;
         private final String message;
         private final Lobby updatedLobby;
         private final GameState gameState;
+        private final String seekerId;
 
         private StartGameResult(boolean success,
                                 @NonNull String message,
                                 @Nullable Lobby updatedLobby,
-                                @Nullable GameState gameState) {
-            this.success = success;
-            this.message = message;
+                                @Nullable GameState gameState,
+                                @Nullable String seekerId) {
+            this.success      = success;
+            this.message      = message;
             this.updatedLobby = updatedLobby;
-            this.gameState = gameState;
+            this.gameState    = gameState;
+            this.seekerId     = seekerId;
         }
 
         public static StartGameResult success(@NonNull Lobby lobby,
+                                              @NonNull GameState gameState,
+                                              @Nullable String seekerId) {
+            return new StartGameResult(true, "Game started successfully.", lobby, gameState, seekerId);
+        }
+
+        /** Legacy overload for callers that don't need seekerId. */
+        public static StartGameResult success(@NonNull Lobby lobby,
                                               @NonNull GameState gameState) {
-            return new StartGameResult(true, "Game started successfully.", lobby, gameState);
+            return success(lobby, gameState, null);
         }
 
         public static StartGameResult failure(@NonNull String message) {
-            return new StartGameResult(false, message, null, null);
+            return new StartGameResult(false, message, null, null, null);
         }
 
-        public boolean isSuccess() {
-            return success;
-        }
-
-        @NonNull
-        public String getMessage() {
-            return message;
-        }
-
-        @Nullable
-        public Lobby getUpdatedLobby() {
-            return updatedLobby;
-        }
-
-        @Nullable
-        public GameState getGameState() {
-            return gameState;
-        }
+        public boolean isSuccess()              { return success; }
+        @NonNull public String getMessage()     { return message; }
+        @Nullable public Lobby getUpdatedLobby(){ return updatedLobby; }
+        @Nullable public GameState getGameState(){ return gameState; }
+        @Nullable public String getSeekerId()   { return seekerId; }
     }
 }

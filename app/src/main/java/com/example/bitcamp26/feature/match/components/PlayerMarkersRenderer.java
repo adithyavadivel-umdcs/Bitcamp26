@@ -5,31 +5,33 @@ import androidx.annotation.Nullable;
 
 import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.model.PlayerRole;
+import com.example.bitcamp26.core.util.PlayerPowerupTracker;
+import com.example.bitcamp26.core.util.VisionRadiusCalculator;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Helper class that converts player state into lightweight marker models
- * that a map, overlay, or custom view can render.
+ * Converts player state into lightweight marker models for map rendering.
  *
- * This class does not draw directly to the screen. Instead, it prepares
- * renderable marker data such as label text, visibility, position, and style.
- * That makes it easy to reuse with a Google Map, a custom overlay, or any
- * future renderer.
+ * Updated to use VisionRadiusCalculator and PlayerPowerupTracker:
+ * - Hiders with active HIDER_INVISIBILITY are hidden from the seeker
+ *   UNLESS the seeker has SEEKER_REVEAL_ALL active (vision 2x)
+ * - Seeker nerf (0.7x) applies when any hider has invisibility
+ * - Vision multiplier label is included in marker subtitle for HUD display
  */
 public class PlayerMarkersRenderer {
 
-    /**
-     * Default marker size in pixels for render models.
-     */
     private static final float DEFAULT_MARKER_SIZE_PX = 28f;
 
     /**
-     * Builds renderable marker data for a list of players.
+     * Builds renderable markers for all visible players from the viewer's perspective.
      *
-     * The caller provides the current viewer's role so visibility rules can be applied.
-     * For example, hidden hiders can be excluded for seekers unless reveal logic is enabled.
+     * @param players              all players in the match
+     * @param currentViewerPlayerId the local player's ID
+     * @param currentViewerRole    the local player's role
+     * @param revealAllHiders      true if seeker has SEEKER_REVEAL_ALL active (overrides invisibility)
+     * @param showCaughtPlayers    whether to include caught/eliminated players
      */
     @NonNull
     public List<RenderablePlayerMarker> buildMarkers(@Nullable List<Player> players,
@@ -38,86 +40,66 @@ public class PlayerMarkersRenderer {
                                                      boolean revealAllHiders,
                                                      boolean showCaughtPlayers) {
         List<RenderablePlayerMarker> markers = new ArrayList<>();
+        if (players == null || players.isEmpty()) return markers;
 
-        if (players == null || players.isEmpty()) {
-            return markers;
-        }
+        // Find the viewer's own Player object so we can pass it to VisionRadiusCalculator
+        Player viewerPlayer = findPlayer(players, currentViewerPlayerId);
 
         for (Player player : players) {
-            if (player == null) {
-                continue;
-            }
+            if (player == null) continue;
+            if (!hasRenderableLocation(player)) continue;
+            if (!shouldRenderPlayer(player, currentViewerPlayerId, currentViewerRole,
+                    revealAllHiders, showCaughtPlayers, players)) continue;
 
-            if (!hasRenderableLocation(player)) {
-                continue;
-            }
-
-            if (!shouldRenderPlayer(player,
-                    currentViewerPlayerId,
-                    currentViewerRole,
-                    revealAllHiders,
-                    showCaughtPlayers)) {
-                continue;
-            }
-
-            markers.add(toRenderableMarker(player, currentViewerPlayerId));
+            markers.add(toRenderableMarker(player, currentViewerPlayerId, viewerPlayer, players));
         }
 
         return markers;
     }
 
     /**
-     * Returns true if the given player should appear on the map for the viewer.
+     * Returns true if this player should appear on the map for the viewer.
+     *
+     * Visibility rules:
+     * - You always see yourself
+     * - Seekers always see other seekers
+     * - Hiders always see the seeker
+     * - Hiders always see each other
+     * - Seeker sees hiders ONLY IF:
+     *     - revealAllHiders is true (SEEKER_REVEAL_ALL active), OR
+     *     - the hider does NOT have HIDER_INVISIBILITY active
      */
     public boolean shouldRenderPlayer(@Nullable Player player,
                                       @Nullable String currentViewerPlayerId,
                                       @Nullable PlayerRole currentViewerRole,
                                       boolean revealAllHiders,
-                                      boolean showCaughtPlayers) {
-        if (player == null) {
-            return false;
-        }
+                                      boolean showCaughtPlayers,
+                                      @Nullable List<Player> allPlayers) {
+        if (player == null || !hasRenderableLocation(player)) return false;
+        if (player.isCaught() && !showCaughtPlayers) return false;
 
-        if (!hasRenderableLocation(player)) {
-            return false;
-        }
-
-        if (player.isCaught() && !showCaughtPlayers) {
-            return false;
-        }
-
-        boolean isSelf = isSamePlayer(player.getId(), currentViewerPlayerId);
-        if (isSelf) {
-            return true;
-        }
+        // Always show self
+        if (isSamePlayer(player.getId(), currentViewerPlayerId)) return true;
 
         PlayerRole targetRole = player.getRole();
-        if (targetRole == null) {
-            return false;
-        }
-
-        if (currentViewerRole == null) {
-            return true;
-        }
+        if (targetRole == null || currentViewerRole == null) return true;
 
         if (currentViewerRole == PlayerRole.HIDER) {
-            return targetRole == PlayerRole.HIDER || targetRole == PlayerRole.SEEKER;
+            // Hiders see everyone
+            return true;
         }
 
         if (currentViewerRole == PlayerRole.SEEKER) {
-            if (targetRole == PlayerRole.SEEKER) {
-                return true;
-            }
+            if (targetRole == PlayerRole.SEEKER) return true;
 
             if (targetRole == PlayerRole.HIDER) {
-                if (revealAllHiders) {
-                    return true;
-                }
+                // If seeker has reveal-all, they see all hiders regardless
+                if (revealAllHiders) return true;
 
-                if (player.getActivePowerup() != null && player.getActivePowerup().name().equals("HIDER_INVISIBILITY")) {
-                    return false;
-                }
+                // If this specific hider has invisibility active, seeker can't see them
+                if (PlayerPowerupTracker.isHiderInvisible(player)) return false;
 
+                // Default: seeker cannot see hiders (they have to find them physically)
                 return false;
             }
         }
@@ -125,143 +107,127 @@ public class PlayerMarkersRenderer {
         return true;
     }
 
+    /** Legacy overload without allPlayers — kept for backward compatibility. */
+    public boolean shouldRenderPlayer(@Nullable Player player,
+                                      @Nullable String currentViewerPlayerId,
+                                      @Nullable PlayerRole currentViewerRole,
+                                      boolean revealAllHiders,
+                                      boolean showCaughtPlayers) {
+        return shouldRenderPlayer(player, currentViewerPlayerId, currentViewerRole,
+                revealAllHiders, showCaughtPlayers, null);
+    }
+
     /**
-     * Converts a single player into a lightweight marker model.
+     * Converts a single player into a renderable marker.
+     * Includes vision multiplier in the subtitle for HUD display.
      */
     @NonNull
     public RenderablePlayerMarker toRenderableMarker(@NonNull Player player,
-                                                     @Nullable String currentViewerPlayerId) {
+                                                     @Nullable String currentViewerPlayerId,
+                                                     @Nullable Player viewerPlayer,
+                                                     @Nullable List<Player> allPlayers) {
         String id = player.getId();
-        String displayName = safeDisplayName(player);
-        boolean isSelf = isSamePlayer(id, currentViewerPlayerId);
-        boolean isCaught = player.isCaught();
-        boolean hasPowerup = player.getHeldPowerup() != null || player.getActivePowerup() != null;
+        boolean isSelf    = isSamePlayer(id, currentViewerPlayerId);
+        boolean isCaught  = player.isCaught();
+        boolean hasPowerup = PlayerPowerupTracker.hasActivePowerup(player);
 
-        MarkerStyle style = resolveMarkerStyle(player, isSelf, isCaught, hasPowerup);
-        String label = buildMarkerLabel(player, isSelf);
-        String subtitle = buildMarkerSubtitle(player, isSelf);
+        MarkerStyle style   = resolveMarkerStyle(player, isSelf, isCaught, hasPowerup);
+        String label        = buildMarkerLabel(player, isSelf);
+        String subtitle     = buildMarkerSubtitle(player, isSelf, viewerPlayer, allPlayers);
 
         return new RenderablePlayerMarker(
-                id,
-                label,
-                subtitle,
-                player.getLatitude(),
-                player.getLongitude(),
-                style,
-                DEFAULT_MARKER_SIZE_PX,
-                isSelf,
-                isCaught,
-                hasPowerup
-        );
+                id, label, subtitle,
+                player.getLatitude(), player.getLongitude(),
+                style, DEFAULT_MARKER_SIZE_PX,
+                isSelf, isCaught, hasPowerup);
     }
 
-    /**
-     * Returns true if a player has coordinates that can be rendered.
-     */
-    public boolean hasRenderableLocation(@Nullable Player player) {
-        if (player == null) {
-            return false;
-        }
+    /** Legacy overload without viewer context. */
+    @NonNull
+    public RenderablePlayerMarker toRenderableMarker(@NonNull Player player,
+                                                     @Nullable String currentViewerPlayerId) {
+        return toRenderableMarker(player, currentViewerPlayerId, null, null);
+    }
 
+    public boolean hasRenderableLocation(@Nullable Player player) {
+        if (player == null) return false;
         return !Double.isNaN(player.getLatitude())
                 && !Double.isNaN(player.getLongitude())
-                && player.getLatitude() >= -90.0
-                && player.getLatitude() <= 90.0
-                && player.getLongitude() >= -180.0
-                && player.getLongitude() <= 180.0;
+                && player.getLatitude()  >= -90.0  && player.getLatitude()  <= 90.0
+                && player.getLongitude() >= -180.0 && player.getLongitude() <= 180.0;
     }
 
-    /**
-     * Chooses a marker style based on role and player state.
-     */
     @NonNull
     public MarkerStyle resolveMarkerStyle(@NonNull Player player,
                                           boolean isSelf,
                                           boolean isCaught,
                                           boolean hasPowerup) {
-        if (isCaught) {
-            return MarkerStyle.CAUGHT;
-        }
-
-        if (isSelf) {
-            return MarkerStyle.SELF;
-        }
-
-        if (hasPowerup) {
-            return MarkerStyle.POWERUP;
-        }
-
+        if (isCaught)   return MarkerStyle.CAUGHT;
+        if (isSelf)     return MarkerStyle.SELF;
+        if (hasPowerup) return MarkerStyle.POWERUP;
         PlayerRole role = player.getRole();
-        if (role == PlayerRole.SEEKER) {
-            return MarkerStyle.SEEKER;
-        }
-
-        if (role == PlayerRole.HIDER) {
-            return MarkerStyle.HIDER;
-        }
-
+        if (role == PlayerRole.SEEKER) return MarkerStyle.SEEKER;
+        if (role == PlayerRole.HIDER)  return MarkerStyle.HIDER;
         return MarkerStyle.DEFAULT;
     }
 
-    /**
-     * Builds the main label shown on or near the marker.
-     */
     @NonNull
-    public String buildMarkerLabel(@NonNull Player player,
-                                   boolean isSelf) {
+    public String buildMarkerLabel(@NonNull Player player, boolean isSelf) {
         String base = safeDisplayName(player);
         return isSelf ? base + " (You)" : base;
     }
 
     /**
-     * Builds a subtitle string that can be shown in an info window or details panel.
+     * Builds subtitle including powerup state and vision multiplier for the viewer.
      */
     @NonNull
     public String buildMarkerSubtitle(@NonNull Player player,
-                                      boolean isSelf) {
-        StringBuilder builder = new StringBuilder();
+                                      boolean isSelf,
+                                      @Nullable Player viewerPlayer,
+                                      @Nullable List<Player> allPlayers) {
+        StringBuilder sb = new StringBuilder();
 
-        if (player.getRole() != null) {
-            builder.append(player.getRole().name());
-        } else {
-            builder.append("UNKNOWN_ROLE");
+        sb.append(player.getRole() != null ? player.getRole().name() : "UNKNOWN_ROLE");
+        if (isSelf) sb.append(" • SELF");
+        if (player.isCaught()) sb.append(" • CAUGHT");
+
+        if (PlayerPowerupTracker.hasActivePowerup(player)) {
+            sb.append(" • ACTIVE:").append(player.getActivePowerup().name());
+            sb.append(" (").append(PlayerPowerupTracker.powerupRemainingLabel(player)).append(")");
+        } else if (player.getHeldPowerup() != null) {
+            sb.append(" • HELD:").append(player.getHeldPowerup().name());
         }
 
-        if (isSelf) {
-            builder.append(" • SELF");
+        // Add vision label when showing self
+        if (isSelf && viewerPlayer != null) {
+            sb.append(" • ").append(
+                VisionRadiusCalculator.getVisionLabel(viewerPlayer, allPlayers));
         }
 
-        if (player.isCaught()) {
-            builder.append(" • CAUGHT");
-        }
-
-        if (player.getHeldPowerup() != null) {
-            builder.append(" • HELD:").append(player.getHeldPowerup().name());
-        }
-
-        if (player.getActivePowerup() != null) {
-            builder.append(" • ACTIVE:").append(player.getActivePowerup().name());
-        }
-
-        return builder.toString();
+        return sb.toString();
     }
 
     @NonNull
     private String safeDisplayName(@NonNull Player player) {
-        String displayName = player.getDisplayName();
-        if (displayName == null || displayName.trim().isEmpty()) {
-            return "Player";
-        }
-        return displayName.trim();
+        String name = player.getDisplayName();
+        return (name == null || name.trim().isEmpty()) ? "Player" : name.trim();
     }
 
     private boolean isSamePlayer(@Nullable String a, @Nullable String b) {
         return a != null && b != null && a.equals(b);
     }
 
-    /**
-     * Lightweight marker representation for UI rendering.
-     */
+    @Nullable
+    private Player findPlayer(@Nullable List<Player> players, @Nullable String id) {
+        if (players == null || id == null) return null;
+        for (Player p : players) {
+            if (p != null && id.equals(p.getId())) return p;
+        }
+        return null;
+    }
+
+    // ── Data classes ──────────────────────────────────────────────────────────
+
     public static class RenderablePlayerMarker {
         private final String playerId;
         private final String label;
@@ -277,79 +243,35 @@ public class PlayerMarkersRenderer {
         public RenderablePlayerMarker(@Nullable String playerId,
                                       @NonNull String label,
                                       @NonNull String subtitle,
-                                      double latitude,
-                                      double longitude,
+                                      double latitude, double longitude,
                                       @NonNull MarkerStyle markerStyle,
                                       float markerSizePx,
-                                      boolean self,
-                                      boolean caught,
-                                      boolean hasPowerup) {
-            this.playerId = playerId;
-            this.label = label;
-            this.subtitle = subtitle;
-            this.latitude = latitude;
-            this.longitude = longitude;
+                                      boolean self, boolean caught, boolean hasPowerup) {
+            this.playerId    = playerId;
+            this.label       = label;
+            this.subtitle    = subtitle;
+            this.latitude    = latitude;
+            this.longitude   = longitude;
             this.markerStyle = markerStyle;
             this.markerSizePx = markerSizePx;
-            this.self = self;
-            this.caught = caught;
-            this.hasPowerup = hasPowerup;
+            this.self        = self;
+            this.caught      = caught;
+            this.hasPowerup  = hasPowerup;
         }
 
-        @Nullable
-        public String getPlayerId() {
-            return playerId;
-        }
-
-        @NonNull
-        public String getLabel() {
-            return label;
-        }
-
-        @NonNull
-        public String getSubtitle() {
-            return subtitle;
-        }
-
-        public double getLatitude() {
-            return latitude;
-        }
-
-        public double getLongitude() {
-            return longitude;
-        }
-
-        @NonNull
-        public MarkerStyle getMarkerStyle() {
-            return markerStyle;
-        }
-
-        public float getMarkerSizePx() {
-            return markerSizePx;
-        }
-
-        public boolean isSelf() {
-            return self;
-        }
-
-        public boolean isCaught() {
-            return caught;
-        }
-
-        public boolean hasPowerup() {
-            return hasPowerup;
-        }
+        @Nullable public String getPlayerId()          { return playerId; }
+        @NonNull  public String getLabel()             { return label; }
+        @NonNull  public String getSubtitle()          { return subtitle; }
+        public double getLatitude()                    { return latitude; }
+        public double getLongitude()                   { return longitude; }
+        @NonNull  public MarkerStyle getMarkerStyle()  { return markerStyle; }
+        public float getMarkerSizePx()                 { return markerSizePx; }
+        public boolean isSelf()                        { return self; }
+        public boolean isCaught()                      { return caught; }
+        public boolean hasPowerup()                    { return hasPowerup; }
     }
 
-    /**
-     * Semantic marker styles that UI code can map to icons, colors, or badges.
-     */
     public enum MarkerStyle {
-        DEFAULT,
-        SELF,
-        SEEKER,
-        HIDER,
-        POWERUP,
-        CAUGHT
+        DEFAULT, SELF, SEEKER, HIDER, POWERUP, CAUGHT
     }
 }

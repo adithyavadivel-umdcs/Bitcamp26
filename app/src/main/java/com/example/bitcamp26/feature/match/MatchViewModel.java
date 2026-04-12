@@ -12,6 +12,7 @@ import com.example.bitcamp26.core.model.HotspotState;
 import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.model.PlayerRole;
 import com.example.bitcamp26.core.model.PowerupType;
+import com.example.bitcamp26.core.balance.GameBalance;
 import com.example.bitcamp26.domain.usecase.ClaimHotspotUseCase;
 import com.example.bitcamp26.domain.usecase.SubmitCatchCodeUseCase;
 import com.example.bitcamp26.domain.usecase.SubmitLocationUseCase;
@@ -22,7 +23,7 @@ import java.util.List;
 
 /**
  * ViewModel for the active match screen.
- *
+ *s
  * This class manages match state, selected player state, location submission,
  * hotspot claiming, catch code submission, and powerup usage.
  */
@@ -276,6 +277,28 @@ public class MatchViewModel extends ViewModel {
         }
 
         statusMessage.setValue(result.getMessage());
+    }
+
+    public void onShrinkTimerFired() {
+        GameState state = gameState.getValue();
+        if (state == null || state.isFinished()) return;
+
+        // In a real app, this would call a Firebase Cloud Function to perform the shrink
+        // on the server side. For this hackathon, we'll simulate the shrink locally
+        // to keep the UI reactive.
+
+        // Get current radius (simulated, usually part of GameState)
+        // We'll use the GameBalance to calculate the shrink amount.
+        // Since GameState doesn't store current radius yet, we'll assume DEFAULT for now.
+        double currentRadius = GameBalance.DEFAULT_MAP_RADIUS_METERS;
+
+        double shrinkAmount = GameBalance.shrinkAmountMeters(currentRadius);
+        double newRadius = Math.max(GameBalance.minRadiusMeters(), currentRadius - shrinkAmount);
+
+        statusMessage.setValue("Zone shrunk to " + (int) newRadius + "m!");
+
+        // In a real implementation, we would update state.mapRadius and push to Firebase.
+        // For now, we just notify the UI that the shrink event was processed.
     }
 
     @Nullable
