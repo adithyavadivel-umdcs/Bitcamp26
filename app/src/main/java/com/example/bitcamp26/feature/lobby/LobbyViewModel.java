@@ -7,24 +7,18 @@ import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
 import com.example.bitcamp26.core.model.Lobby;
-import com.example.bitcamp26.core.model.Player;
 import com.example.bitcamp26.core.util.CodeUtils;
 import com.example.bitcamp26.data.auth.AuthRepository;
 import com.example.bitcamp26.data.lobby.LobbyRepository;
-import com.example.bitcamp26.domain.usecase.JoinLobbyUseCase;
 import com.google.firebase.database.ValueEventListener;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
- * ViewModel for lobby creation, joining, and realtime lobby observation.
+ * ViewModel for backend-authoritative lobby creation, joining, and realtime observation.
  */
 public class LobbyViewModel extends ViewModel {
 
     private final LobbyRepository lobbyRepository;
     private final AuthRepository authRepository;
-    private final JoinLobbyUseCase joinLobbyUseCase;
 
     private final MutableLiveData<Boolean> loading = new MutableLiveData<>(false);
     private final MutableLiveData<Lobby> currentLobby = new MutableLiveData<>();
@@ -36,15 +30,13 @@ public class LobbyViewModel extends ViewModel {
     private String activeObservedLobbyCode;
 
     public LobbyViewModel() {
-        this(new LobbyRepository(), new AuthRepository(), new JoinLobbyUseCase());
+        this(new LobbyRepository(), new AuthRepository());
     }
 
     public LobbyViewModel(@NonNull LobbyRepository lobbyRepository,
-                          @NonNull AuthRepository authRepository,
-                          @NonNull JoinLobbyUseCase joinLobbyUseCase) {
+                          @NonNull AuthRepository authRepository) {
         this.lobbyRepository = lobbyRepository;
         this.authRepository = authRepository;
-        this.joinLobbyUseCase = joinLobbyUseCase;
     }
 
     @NonNull
@@ -88,12 +80,10 @@ public class LobbyViewModel extends ViewModel {
         loading.setValue(true);
         errorMessage.setValue(null);
 
-        final String lobbyCode = CodeUtils.generateCode();
-        Lobby lobby = buildNewLobby(lobbyCode, userId, normalizedDisplayName);
-
-        lobbyRepository.createLobby(lobbyCode, lobby, new LobbyRepository.LobbyCallback() {
+        lobbyRepository.createLobby(normalizedDisplayName, new LobbyRepository.LobbyCallback() {
             @Override
             public void onSuccess(@NonNull Lobby createdLobby) {
+                String lobbyCode = createdLobby.getCode();
                 loading.postValue(false);
                 currentLobby.postValue(createdLobby);
                 currentLobbyCode.postValue(lobbyCode);
@@ -133,35 +123,15 @@ public class LobbyViewModel extends ViewModel {
         loading.setValue(true);
         errorMessage.setValue(null);
 
-        lobbyRepository.getLobby(lobbyCode, new LobbyRepository.LobbyCallback() {
+        lobbyRepository.joinLobby(lobbyCode, normalizedDisplayName, new LobbyRepository.LobbyCallback() {
             @Override
             public void onSuccess(@NonNull Lobby lobby) {
-                Player joiningPlayer = buildJoiningPlayer(userId, normalizedDisplayName);
-                JoinLobbyUseCase.JoinLobbyResult result = joinLobbyUseCase.execute(lobby, joiningPlayer);
-
-                if (!result.isSuccess() || result.getUpdatedLobby() == null) {
-                    loading.postValue(false);
-                    errorMessage.postValue(result.getMessage());
-                    return;
-                }
-
-                lobbyRepository.updateLobby(lobbyCode, result.getUpdatedLobby(), new LobbyRepository.LobbyCallback() {
-                    @Override
-                    public void onSuccess(@NonNull Lobby updatedLobby) {
-                        loading.postValue(false);
-                        currentLobby.postValue(updatedLobby);
-                        currentLobbyCode.postValue(lobbyCode);
-                        statusMessage.postValue("Joined lobby: " + CodeUtils.formatCodeForDisplay(lobbyCode));
-                        errorMessage.postValue(null);
-                        observeLobby(lobbyCode);
-                    }
-
-                    @Override
-                    public void onError(@NonNull String message) {
-                        loading.postValue(false);
-                        errorMessage.postValue(message);
-                    }
-                });
+                loading.postValue(false);
+                currentLobby.postValue(lobby);
+                currentLobbyCode.postValue(lobby.getCode());
+                statusMessage.postValue("Joined lobby: " + CodeUtils.formatCodeForDisplay(lobbyCode));
+                errorMessage.postValue(null);
+                observeLobby(lobbyCode);
             }
 
             @Override
@@ -220,35 +190,6 @@ public class LobbyViewModel extends ViewModel {
         }
         activeObservedLobbyCode = null;
         activeLobbyListener = null;
-    }
-
-    @NonNull
-    private Lobby buildNewLobby(@NonNull String lobbyCode,
-                                @NonNull String userId,
-                                @NonNull String displayName) {
-        Lobby lobby = new Lobby();
-        lobby.setCode(lobbyCode);
-        lobby.setStarted(false);
-        lobby.setMaxPlayers(8);
-        lobby.setMatchDurationSeconds(300);
-
-        List<Player> players = new ArrayList<>();
-        players.add(buildJoiningPlayer(userId, displayName));
-
-        lobby.setPlayers(players);
-        lobby.setPlayerCount(players.size());
-        return lobby;
-    }
-
-    @NonNull
-    private Player buildJoiningPlayer(@NonNull String userId,
-                                      @NonNull String displayName) {
-        Player player = new Player();
-        player.setId(userId);
-        player.setDisplayName(displayName);
-        player.setCaught(false);
-        player.setCatchCode(CodeUtils.generateCode());
-        return player;
     }
 
     @NonNull
